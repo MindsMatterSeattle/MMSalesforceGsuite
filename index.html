@@ -38,7 +38,8 @@
 <nav class="navbar navbar-dark bg-primary">
   <div class="container-fluid">
     <span class="navbar-brand">Minds Matter Admin</span>
-    <span class="navbar-text text-white-50" id="domainBadge"></span>
+    <span class="navbar-text text-white-50 ms-auto me-3" id="domainBadge"></span>
+    <span class="navbar-text text-white-50 small" id="versionBadge"></span>
   </div>
 </nav>
 
@@ -462,6 +463,8 @@ function refreshContactStatus(result) {
 // ─── Groups ───────────────────────────────────────────────────────────────────
 let _domainname = '';
 let _groupsConfig = {};
+let _sfColumns = []; // column names from the Salesforce sheet header row
+let _sfColumnValues = {}; // cache: columnName -> string[] of distinct values
 
 function loadGroups() {
   google.script.run
@@ -469,10 +472,38 @@ function loadGroups() {
       _domainname = data.domainname;
       _groupsConfig = data.config;
       document.getElementById('domainBadge').textContent = _domainname;
-      renderGroups();
+      // Fetch sheet columns, then render (columns may already be loaded on re-open)
+      if (_sfColumns.length) {
+        renderGroups();
+      } else {
+        google.script.run
+          .withSuccessHandler(function(cols) {
+            _sfColumns = cols;
+            rebuildColumnDatalist();
+            renderGroups();
+          })
+          .withFailureHandler(function(e) {
+            // Non-fatal: render without suggestions if sheet isn't configured yet
+            showToast('Could not load column names: ' + e.message, false);
+            renderGroups();
+          })
+          .getSalesforceColumns();
+      }
     })
     .withFailureHandler(function(e) { showToast('Groups load error: ' + e.message, false); })
     .getGroupsConfig();
+}
+
+function rebuildColumnDatalist() {
+  let dl = document.getElementById('sfColumnList');
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = 'sfColumnList';
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = _sfColumns.map(function(c) {
+    return '<option value="' + escHtml(c) + '">';
+  }).join('');
 }
 
 function renderGroups() {
@@ -480,6 +511,14 @@ function renderGroups() {
   container.innerHTML = '';
   Object.keys(_groupsConfig).forEach(function(key) {
     container.appendChild(buildGroupCard(key, _groupsConfig[key]));
+  });
+  // Pre-fetch value suggestions for all columns already present in existing filters.
+  container.querySelectorAll('.filter-row').forEach(function(row) {
+    const colInput = row.querySelector('.filter-col');
+    const valInput = row.querySelector('.filter-val');
+    if (colInput && valInput && colInput.value.trim()) {
+      loadColumnValues(colInput.value.trim(), valInput);
+    }
   });
 }
 
@@ -533,13 +572,52 @@ function buildGroupCard(key, gc) {
 
 function filterRowHtml(f, i) {
   const cond = f.condition || 'equals';
-  return '<tr class="filter-row"><td><input type="text" class="form-control form-control-sm filter-col" value="' + escHtml(f.column || '') + '"></td>' +
+  const col  = f.column || '';
+  // Datalist id for column suggestions (shared); datalist for values is per-column.
+  const valListId = col ? 'sfValList_' + col.replace(/\W+/g, '_') : '';
+  return '<tr class="filter-row">' +
+    '<td><input type="text" class="form-control form-control-sm filter-col" list="sfColumnList" value="' + escHtml(col) + '" placeholder="Column name"></td>' +
     '<td><select class="form-select form-select-sm filter-cond">' +
     '<option value="equals"' + (cond === 'equals' ? ' selected' : '') + '>equals</option>' +
     '<option value="contains"' + (cond === 'contains' ? ' selected' : '') + '>contains</option>' +
     '</select></td>' +
-    '<td><input type="text" class="form-control form-control-sm filter-val" value="' + escHtml(String(f.value !== undefined ? f.value : '')) + '"></td>' +
+    '<td><input type="text" class="form-control form-control-sm filter-val"' + (valListId ? ' list="' + escHtml(valListId) + '"' : '') + ' value="' + escHtml(String(f.value !== undefined ? f.value : '')) + '" placeholder="Value"></td>' +
     '<td><button class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove()">×</button></td></tr>';
+}
+
+/**
+ * Fetches distinct values for the given column from the Salesforce sheet
+ * (using the cache), then ensures a <datalist> with those options exists in
+ * the DOM and updates the list attribute on valInput to point to it.
+ */
+function loadColumnValues(columnName, valInput) {
+  if (!columnName) { valInput.removeAttribute('list'); return; }
+  const dlId = 'sfValList_' + columnName.replace(/\W+/g, '_');
+  valInput.setAttribute('list', dlId);
+
+  // Serve from cache immediately if available.
+  if (_sfColumnValues[columnName]) {
+    ensureValDatalist(dlId, _sfColumnValues[columnName]);
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(vals) {
+      _sfColumnValues[columnName] = vals;
+      ensureValDatalist(dlId, vals);
+    })
+    .withFailureHandler(function() { /* non-fatal */ })
+    .getSalesforceColumnValues(columnName);
+}
+
+function ensureValDatalist(dlId, values) {
+  let dl = document.getElementById(dlId);
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = dlId;
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = values.map(function(v) { return '<option value="' + escHtml(v) + '">'; }).join('');
 }
 
 function addFilter(btn) {
@@ -625,6 +703,9 @@ function checkSetupStatus() {
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
+  google.script.run
+    .withSuccessHandler(function(v) { document.getElementById('versionBadge').textContent = 'v' + v; })
+    .getAppVersion();
   checkSetupStatus();
   loadDashboard();
   loadSheetLinks();
@@ -635,6 +716,14 @@ document.addEventListener('DOMContentLoaded', function() {
   // Load groups when that tab is first activated
   document.querySelector('[href="#groups"]').addEventListener('shown.bs.tab', function() {
     if (!_domainname) loadGroups();
+  });
+
+  // When a column field changes, fetch value suggestions for the adjacent value field.
+  document.getElementById('groupsList').addEventListener('change', function(e) {
+    if (e.target.classList.contains('filter-col')) {
+      const valInput = e.target.closest('tr').querySelector('.filter-val');
+      loadColumnValues(e.target.value.trim(), valInput);
+    }
   });
 });
 </script>

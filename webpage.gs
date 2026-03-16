@@ -24,6 +24,11 @@ function doGet() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+/** Returns the current app version string defined in version.gs. */
+function getAppVersion() {
+  return APP_VERSION;
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 /**
@@ -230,6 +235,57 @@ function runRunMerge() {
  * If a UI-edited version is stored in script properties, returns that;
  * otherwise seeds from the hardcoded groups_conf.js and saves it.
  */
+/**
+ * Returns the column header names from the Salesforce spreadsheet's first row.
+ * Used by the Groups tab to populate column-name dropdowns in filter rows.
+ */
+function getSalesforceColumns() {
+  var props = PropertiesService.getScriptProperties();
+  var sheetId   = props.getProperty('salesforceSpreadSheetID');
+  var sheetName = props.getProperty('salesforceSheetName');
+  if (!sheetId) throw new Error('salesforceSpreadSheetID is not set.');
+  var ss    = SpreadsheetApp.openById(sheetId);
+  var sheet = sheetName ? ss.getSheetByName(sheetName) : ss.getSheets()[0];
+  if (!sheet) throw new Error('Sheet "' + sheetName + '" not found.');
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return [];
+  return sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function(h) { return String(h).trim(); })
+    .filter(function(h) { return h.length > 0; });
+}
+
+/**
+ * Returns distinct non-empty values from the named column in the Salesforce sheet.
+ * Used by the Groups tab to populate value-field suggestions.
+ * @param {string} columnName - header text to look up
+ * @returns {string[]} sorted unique values
+ */
+function getSalesforceColumnValues(columnName) {
+  var props = PropertiesService.getScriptProperties();
+  var sheetId   = props.getProperty('salesforceSpreadSheetID');
+  var sheetName = props.getProperty('salesforceSheetName');
+  if (!sheetId) throw new Error('salesforceSpreadSheetID is not set.');
+  var ss    = SpreadsheetApp.openById(sheetId);
+  var sheet = sheetName ? ss.getSheetByName(sheetName) : ss.getSheets()[0];
+  if (!sheet) throw new Error('Sheet "' + sheetName + '" not found.');
+  var lastCol = sheet.getLastColumn();
+  var lastRow = sheet.getLastRow();
+  if (lastCol < 1 || lastRow < 2) return [];
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var colIdx = -1;
+  for (var i = 0; i < headers.length; i++) {
+    if (String(headers[i]).trim() === columnName) { colIdx = i; break; }
+  }
+  if (colIdx === -1) return [];
+  var values = sheet.getRange(2, colIdx + 1, lastRow - 1, 1).getValues();
+  var seen = {};
+  values.forEach(function(row) {
+    var v = String(row[0]).trim();
+    if (v) seen[v] = true;
+  });
+  return Object.keys(seen).sort();
+}
+
 function getGroupsConfig() {
   var domainname = PropertiesService.getScriptProperties().getProperty('domainname');
   var key = 'groupsConfig_' + domainname;
