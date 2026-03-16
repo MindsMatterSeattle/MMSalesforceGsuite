@@ -311,6 +311,26 @@ function saveGroupsConfig(domainname, configJson) {
   return 'Saved';
 }
 
+// ─── Gmail Drafts ─────────────────────────────────────────────────────────────
+
+/**
+ * Returns the list of Gmail drafts in the admin account, each with enough
+ * information for the UI to render a picker and a direct Gmail link.
+ * @returns {{id: string, subject: string, gmailUrl: string}[]}
+ */
+function getGmailDrafts() {
+  return GmailApp.getDrafts().map(function(d) {
+    var msg = d.getMessage();
+    var subject = msg.getSubject() || '(no subject)';
+    var threadId = msg.getThread().getId();
+    return {
+      id:       d.getId(),
+      subject:  subject,
+      gmailUrl: 'https://mail.google.com/mail/#drafts/' + threadId
+    };
+  });
+}
+
 // ─── Legacy / Script Status ───────────────────────────────────────────────────
 
 function getScriptStatusData() {

@@ -357,62 +357,121 @@ const CONFIG_GROUPS = [
   { heading: 'Other',          keys: ['protectedAccounts','contactUpdateFormId','dry_run','do_remove_default'] }
 ];
 
+let _gmailDrafts = null; // cache: [{id, subject, gmailUrl}]
+
 function loadConfig() {
+  // Fetch vars and drafts in parallel; render once both arrive.
+  let _vars = null;
+
+  function tryRender() {
+    if (!_vars || !_gmailDrafts) return; // wait for both
+    renderConfig(_vars, _gmailDrafts);
+  }
+
   google.script.run
-    .withSuccessHandler(function(vars) {
-      const byName = {};
-      vars.forEach(function(v) { byName[v.name] = v; });
-
-      const container = document.getElementById('configForm');
-      container.innerHTML = '';
-
-      CONFIG_GROUPS.forEach(function(grp) {
-        let html = '<p class="section-heading mt-3">' + grp.heading + '</p>';
-        grp.keys.forEach(function(key) {
-          const v = byName[key];
-          if (!v) return;
-          const missing = v.required && !v.value;
-          if (v.type === 'checkbox') {
-            html += '<div class="mb-2 form-check">' +
-              '<input class="form-check-input config-field" type="checkbox" id="cfg_' + v.name + '" data-name="' + v.name + '"' + (v.value === 'true' ? ' checked' : '') + '>' +
-              '<label class="form-check-label" for="cfg_' + v.name + '">' + v.label + '</label></div>';
-          } else {
-            const inputType = v.type === 'password' ? 'password' : 'text';
-            const picker = v.type === 'sheet' ?
-              ' <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openPicker(\'cfg_' + v.name + '\')">Pick</button>' : '';
-            const requiredBadge = v.required ? ' <span class="badge text-bg-secondary">required</span>' : '';
-            const invalidClass = missing ? ' is-invalid' : '';
-            const feedback = missing ? '<div class="invalid-feedback">Required — sync will fail without this.</div>' : '';
-            html += '<div class="mb-2"><label class="form-label small fw-semibold mb-0">' + v.label + requiredBadge + '</label>' +
-              '<div class="input-group input-group-sm">' +
-              '<input type="' + inputType + '" class="form-control config-field' + invalidClass + '" id="cfg_' + v.name + '" data-name="' + v.name + '" data-required="' + v.required + '" value="' + escHtml(v.value) + '">' +
-              picker + '</div>' + feedback + '</div>';
-          }
-        });
-        container.innerHTML += html;
-      });
-
-      // Auto-save on change; clear invalid state on non-empty value
-      document.querySelectorAll('.config-field').forEach(function(el) {
-        el.addEventListener('change', function() {
-          const name = this.dataset.name;
-          const value = this.type === 'checkbox' ? String(this.checked) : this.value;
-          if (this.dataset.required === 'true') {
-            this.classList.toggle('is-invalid', !value);
-            this.classList.toggle('is-valid', !!value);
-          }
-          google.script.run
-            .withSuccessHandler(function() {
-              showToast('Saved ' + name, true);
-              // Re-check setup status after a required field is updated
-              checkSetupStatus();
-            })
-            .withFailureHandler(function(e) { showToast('Save failed: ' + e.message, false); })
-            .saveScriptVariable(name, value);
-        });
-      });
-    })
+    .withSuccessHandler(function(vars) { _vars = vars; tryRender(); })
+    .withFailureHandler(function(e) { showToast('Config load error: ' + e.message, false); })
     .getScriptVariablesData();
+
+  if (_gmailDrafts) {
+    // Already cached from a previous load
+    tryRender();
+  } else {
+    google.script.run
+      .withSuccessHandler(function(drafts) { _gmailDrafts = drafts; tryRender(); })
+      .withFailureHandler(function() { _gmailDrafts = []; tryRender(); }) // non-fatal
+      .getGmailDrafts();
+  }
+}
+
+function renderConfig(vars, drafts) {
+  const byName = {};
+  vars.forEach(function(v) { byName[v.name] = v; });
+
+  // Build a lookup from draft id -> gmailUrl for the open-link button
+  const draftUrlById = {};
+  drafts.forEach(function(d) { draftUrlById[d.id] = d.gmailUrl; });
+
+  const container = document.getElementById('configForm');
+  container.innerHTML = '';
+
+  CONFIG_GROUPS.forEach(function(grp) {
+    let html = '<p class="section-heading mt-3">' + grp.heading + '</p>';
+    grp.keys.forEach(function(key) {
+      const v = byName[key];
+      if (!v) return;
+      const missing = v.required && !v.value;
+      const requiredBadge = v.required ? ' <span class="badge text-bg-secondary">required</span>' : '';
+
+      if (v.type === 'checkbox') {
+        html += '<div class="mb-2 form-check">' +
+          '<input class="form-check-input config-field" type="checkbox" id="cfg_' + v.name + '" data-name="' + v.name + '"' + (v.value === 'true' ? ' checked' : '') + '>' +
+          '<label class="form-check-label" for="cfg_' + v.name + '">' + v.label + '</label></div>';
+
+      } else if (v.type === 'draft') {
+        // Draft picker: select populated with Gmail draft subjects + open link
+        const currentUrl = v.value ? (draftUrlById[v.value] || '') : '';
+        let options = '<option value="">— select a draft —</option>';
+        drafts.forEach(function(d) {
+          options += '<option value="' + escHtml(d.id) + '"' + (d.id === v.value ? ' selected' : '') + '>' + escHtml(d.subject) + '</option>';
+        });
+        // If a value is saved but the draft no longer appears in the list, add a placeholder entry
+        if (v.value && !draftUrlById[v.value]) {
+          options += '<option value="' + escHtml(v.value) + '" selected>(saved ID: ' + escHtml(v.value) + ')</option>';
+        }
+        const openDisabled = currentUrl ? '' : ' disabled';
+        html += '<div class="mb-2"><label class="form-label small fw-semibold mb-0">' + v.label + requiredBadge + '</label>' +
+          '<div class="input-group input-group-sm">' +
+          '<select class="form-select config-field" id="cfg_' + v.name + '" data-name="' + v.name + '" data-type="draft" data-draft-urls=\'' + JSON.stringify(draftUrlById).replace(/'/g, '&#39;') + '\'>' +
+          options + '</select>' +
+          '<a id="draftLink_' + v.name + '" href="' + escHtml(currentUrl) + '" target="_blank" class="btn btn-sm btn-outline-secondary"' + openDisabled + '>Open in Gmail &#x2197;</a>' +
+          '</div></div>';
+
+      } else {
+        const inputType = v.type === 'password' ? 'password' : 'text';
+        const picker = v.type === 'sheet' ?
+          ' <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openPicker(\'cfg_' + v.name + '\')">Pick</button>' : '';
+        const invalidClass = missing ? ' is-invalid' : '';
+        const feedback = missing ? '<div class="invalid-feedback">Required — sync will fail without this.</div>' : '';
+        html += '<div class="mb-2"><label class="form-label small fw-semibold mb-0">' + v.label + requiredBadge + '</label>' +
+          '<div class="input-group input-group-sm">' +
+          '<input type="' + inputType + '" class="form-control config-field' + invalidClass + '" id="cfg_' + v.name + '" data-name="' + v.name + '" data-required="' + v.required + '" value="' + escHtml(v.value) + '">' +
+          picker + '</div>' + feedback + '</div>';
+      }
+    });
+    container.innerHTML += html;
+  });
+
+  // Auto-save on change; update draft open-link when draft select changes
+  document.querySelectorAll('.config-field').forEach(function(el) {
+    el.addEventListener('change', function() {
+      const name = this.dataset.name;
+      const value = this.type === 'checkbox' ? String(this.checked) : this.value;
+
+      // Keep the "Open in Gmail" link in sync with the selected draft
+      if (this.dataset.type === 'draft') {
+        const urls = JSON.parse(this.dataset.draftUrls || '{}');
+        const linkEl = document.getElementById('draftLink_' + name);
+        if (linkEl) {
+          const url = urls[value] || '';
+          linkEl.href = url;
+          linkEl.toggleAttribute('disabled', !url);
+        }
+      }
+
+      if (this.dataset.required === 'true') {
+        this.classList.toggle('is-invalid', !value);
+        this.classList.toggle('is-valid', !!value);
+      }
+      google.script.run
+        .withSuccessHandler(function() {
+          showToast('Saved ' + name, true);
+          checkSetupStatus();
+        })
+        .withFailureHandler(function(e) { showToast('Save failed: ' + e.message, false); })
+        .saveScriptVariable(name, value);
+    });
+  });
 }
 
 function switchTab(tabId) {
