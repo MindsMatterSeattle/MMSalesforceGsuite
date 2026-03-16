@@ -170,6 +170,31 @@ TODO: make the spreadsheet creation and variable setting automated.
 
     run setup_groups function to automatically create all the groups that have not yet been created.  If groups were created before, you may need to transfer ownership of that group to the admin account.
 
+    Alternatively, run `setupAll()` which creates the spreadsheets, groups, and custom schema in one step.
+
+14b. Create the SalesforceData custom user schema.
+    Run `setupSalesforceSchema()` from the Apps Script editor (Run > Run function > setupSalesforceSchema).
+    This creates a custom schema called "SalesforceData" on your domain with the following fields:
+
+        Status                   — current status (e.g. Current, Former)
+        Engagement_Type          — multi-valued; all engagement types the person holds
+        Role_Non_Leadership      — multi-valued; non-leadership roles (Mentor, Instructor, etc.)
+        Leadership               — leadership tier (e.g. Chapter Executive Committee)
+        Leadership_Sub_Role      — specific leadership role (e.g. Program Director)
+        Year                     — graduation year (for students)
+        Student_Year_Association — cohort year mentors are assigned to
+        Contact_Record_Type      — Salesforce contact record type
+
+    These fields are kept in sync by syncGoogleWithSalesforce_v2 on every run.
+    They can be used in the future with Google Workspace Dynamic Groups to manage group
+    membership automatically via attribute queries (requires Enterprise Standard/Plus or
+    Education Plus license).
+
+    To verify after the first sync: open Admin Console > Users > select any user >
+    User information and look for the "Salesforce Data" section, or run
+    AdminDirectory.Users.get(email, {projection: 'full'}) from the Apps Script console
+    and inspect user.customSchemas.
+
 15. Do a dry run of user creation.
     Edit dry_run = false, to dry_run = true (~line 282) in script.
     Manually trigger script on script.google.com “run>run function>syncGoogleWithSalesforce”

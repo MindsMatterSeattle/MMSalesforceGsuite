@@ -488,4 +488,222 @@ function syncGoogleWithSalesforce_v2() {
     auditGroup(google_group, correctEmailDict[group_str], do_remove, dry_run);
     Utilities.sleep(1000) // avoid hitting the Admin Directory API rate limit
   }
+
+  // Phase 5: Sync Salesforce attributes to user custom schema fields.
+  // This keeps metadata on each Google account up to date so it can be used
+  // for Dynamic Group queries or other reporting in the future.
+  var userMetadataDict = buildUserMetadataDict(data, columnDict, domainname);
+  syncUserMetadata(userMetadataDict, dry_run);
+}
+
+/**
+ * Creates the "SalesforceData" custom user schema in the domain if it does not already exist.
+ * This schema stores the Salesforce contact attributes that drive group membership so they
+ * are available directly on each Google Workspace user account.
+ *
+ * Run this once during initial setup (or call setupAll()).
+ */
+function setupSalesforceSchema() {
+  var domainname = PropertiesService.getScriptProperties().getProperty('domainname');
+
+  // Check whether the schema already exists.
+  var existing = AdminDirectory.Schemas.list(domainname);
+  if (existing.schemas) {
+    for (var i = 0; i < existing.schemas.length; i++) {
+      if (existing.schemas[i].schemaName === 'SalesforceData') {
+        console.log('SalesforceData schema already exists, skipping creation.');
+        return;
+      }
+    }
+  }
+
+  var schema = {
+    schemaName: 'SalesforceData',
+    displayName: 'Salesforce Data',
+    fields: [
+      {
+        fieldName: 'Status',
+        displayName: 'Status',
+        fieldType: 'STRING',
+        multiValued: false,
+        readAccessType: 'ADMINS_AND_SELF',
+        indexed: true
+      },
+      {
+        // Multi-valued: a contact can have multiple engagement records (e.g. Volunteer + Board Member).
+        fieldName: 'Engagement_Type',
+        displayName: 'Engagement Type',
+        fieldType: 'STRING',
+        multiValued: true,
+        readAccessType: 'ADMINS_AND_SELF',
+        indexed: true
+      },
+      {
+        // Multi-valued: a contact can hold multiple roles across engagements.
+        fieldName: 'Role_Non_Leadership',
+        displayName: 'Role (Non-Leadership)',
+        fieldType: 'STRING',
+        multiValued: true,
+        readAccessType: 'ADMINS_AND_SELF',
+        indexed: true
+      },
+      {
+        fieldName: 'Leadership',
+        displayName: 'Leadership',
+        fieldType: 'STRING',
+        multiValued: false,
+        readAccessType: 'ADMINS_AND_SELF',
+        indexed: true
+      },
+      {
+        fieldName: 'Leadership_Sub_Role',
+        displayName: 'Leadership Sub-Role',
+        fieldType: 'STRING',
+        multiValued: false,
+        readAccessType: 'ADMINS_AND_SELF',
+        indexed: true
+      },
+      {
+        fieldName: 'Year',
+        displayName: 'Year',
+        fieldType: 'STRING',
+        multiValued: false,
+        readAccessType: 'ADMINS_AND_SELF',
+        indexed: true
+      },
+      {
+        fieldName: 'Student_Year_Association',
+        displayName: 'Student Year Association',
+        fieldType: 'STRING',
+        multiValued: false,
+        readAccessType: 'ADMINS_AND_SELF',
+        indexed: true
+      },
+      {
+        fieldName: 'Contact_Record_Type',
+        displayName: 'Contact Record Type',
+        fieldType: 'STRING',
+        multiValued: false,
+        readAccessType: 'ADMINS_AND_SELF',
+        indexed: true
+      }
+    ]
+  };
+
+  AdminDirectory.Schemas.insert(schema, domainname);
+  console.log('SalesforceData schema created.');
+}
+
+/**
+ * Iterates all Salesforce data rows and builds a per-user metadata dictionary.
+ * Because the Contacts and Engagement History report produces one row per engagement,
+ * a single person may appear on multiple rows. Multi-valued fields (Engagement_Type,
+ * Role_Non_Leadership) accumulate all unique values across those rows.
+ *
+ * @param {Array[]} data - 2D array of spreadsheet values (row 0 is headers).
+ * @param {Object} columnDict - Map of column name to column index.
+ * @param {string} domainname - The G Suite domain (used to construct org email).
+ * @returns {Object} Map of org email to metadata object ready for customSchemas.
+ */
+function buildUserMetadataDict(data, columnDict, domainname) {
+  var metadataDict = {};
+
+  for (var i = 1; i < data.length; i++) {
+    var firstName = data[i][columnDict['First Name']];
+    var lastName  = data[i][columnDict['Last Name']];
+    if (!firstName || !lastName) continue;
+
+    var email = firstName.toLowerCase() + '.' + lastName.toLowerCase() + '@' + domainname;
+    email = email.replace(/ /g, '.').replace(/['\u2018\u2019]/g, '');
+
+    if (!metadataDict[email]) {
+      metadataDict[email] = {
+        Status:                   data[i][columnDict['Status']] || '',
+        Engagement_Types:         [],
+        Roles_Non_Leadership:     [],
+        Leadership:               data[i][columnDict['Leadership']] || '',
+        Leadership_Sub_Role:      data[i][columnDict['Leadership Sub-Role']] || '',
+        Year:                     data[i][columnDict['Year']] ? String(data[i][columnDict['Year']]) : '',
+        Student_Year_Association: data[i][columnDict['Student Year Association']] || '',
+        Contact_Record_Type:      data[i][columnDict['Contact Record Type']] || ''
+      };
+    }
+
+    // For multi-valued fields, append any new non-empty value from this row.
+    var engType = data[i][columnDict['Engagement Type']];
+    if (engType && metadataDict[email].Engagement_Types.indexOf(engType) === -1) {
+      metadataDict[email].Engagement_Types.push(engType);
+    }
+
+    var role = data[i][columnDict['Role (Non-Leadership)']];
+    if (role && metadataDict[email].Roles_Non_Leadership.indexOf(role) === -1) {
+      metadataDict[email].Roles_Non_Leadership.push(role);
+    }
+
+    // For single-valued fields, update if the current entry is empty and this row has a value.
+    // This handles cases where the first row for a user may be missing some fields.
+    if (!metadataDict[email].Status && data[i][columnDict['Status']]) {
+      metadataDict[email].Status = data[i][columnDict['Status']];
+    }
+    if (!metadataDict[email].Leadership && data[i][columnDict['Leadership']]) {
+      metadataDict[email].Leadership = data[i][columnDict['Leadership']];
+    }
+    if (!metadataDict[email].Leadership_Sub_Role && data[i][columnDict['Leadership Sub-Role']]) {
+      metadataDict[email].Leadership_Sub_Role = data[i][columnDict['Leadership Sub-Role']];
+    }
+  }
+
+  return metadataDict;
+}
+
+/**
+ * Updates the SalesforceData custom schema fields on each Google Workspace user
+ * based on the metadata dict built by buildUserMetadataDict().
+ *
+ * @param {Object} userMetadataDict - Map of org email to metadata object (from buildUserMetadataDict).
+ * @param {boolean} dry_run - If true, logs what would be set without calling the API.
+ */
+function syncUserMetadata(userMetadataDict, dry_run) {
+  for (var email in userMetadataDict) {
+    var meta = userMetadataDict[email];
+
+    // Convert multi-valued arrays to the {value: "..."} object format the API expects.
+    var engagementTypes = meta.Engagement_Types.map(function(v) { return {value: v}; });
+    var roles           = meta.Roles_Non_Leadership.map(function(v) { return {value: v}; });
+
+    var customSchemas = {
+      SalesforceData: {
+        Status:                   meta.Status,
+        Engagement_Type:          engagementTypes,
+        Role_Non_Leadership:      roles,
+        Leadership:               meta.Leadership,
+        Leadership_Sub_Role:      meta.Leadership_Sub_Role,
+        Year:                     meta.Year,
+        Student_Year_Association: meta.Student_Year_Association,
+        Contact_Record_Type:      meta.Contact_Record_Type
+      }
+    };
+
+    if (dry_run) {
+      console.log({message: 'dry_run: would update metadata', email: email, customSchemas: customSchemas});
+    } else {
+      try {
+        AdminDirectory.Users.update({customSchemas: customSchemas}, email);
+      } catch(e) {
+        console.log({message: 'Failed to update metadata', email: email, error: String(e)});
+      }
+      Utilities.sleep(200); // avoid hitting the Admin Directory API rate limit
+    }
+  }
+}
+
+/**
+ * Convenience setup function for initial deployment.
+ * Creates the required spreadsheets, Google Groups, and custom user schema in one step.
+ * Safe to run multiple times -- each sub-function checks for existing resources before creating.
+ */
+function setupAll() {
+  setupSpreadsheets();
+  setupGroups();
+  setupSalesforceSchema();
 }
