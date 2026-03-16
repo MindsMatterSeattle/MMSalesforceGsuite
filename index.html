@@ -524,11 +524,15 @@ function renderGroups() {
 
 function buildGroupCard(key, gc) {
   const div = document.createElement('div');
-  div.className = 'card group-card mb-3';
+  div.className = 'card group-card mb-2';
   div.dataset.groupKey = key;
 
   const combo = (gc.combination || 'and').toLowerCase();
   const doRemove = !!gc.do_remove;
+  const collapseId = 'gc_' + key.replace(/\W+/g, '_') + '_' + Date.now();
+  const filterCount = (gc.filters || []).length;
+  const summary = (gc.name ? escHtml(gc.name) + ' &mdash; ' : '') +
+    filterCount + ' filter' + (filterCount !== 1 ? 's' : '');
 
   let filtersHtml = '<table class="table table-sm mb-0"><thead><tr>' +
     '<th>Column</th><th>Condition</th><th>Value</th><th></th></tr></thead><tbody>';
@@ -537,35 +541,60 @@ function buildGroupCard(key, gc) {
   });
   filtersHtml += '</tbody></table>';
 
-  div.innerHTML = '<div class="card-header d-flex justify-content-between align-items-start">' +
-    '<div class="flex-grow-1 me-2">' +
-    '<label class="form-label small fw-semibold mb-0">Group email prefix</label>' +
-    '<input type="text" class="form-control form-control-sm group-key" value="' + escHtml(key) + '">' +
+  div.innerHTML =
+    // ── Collapsed header (always visible) ──────────────────────────────────
+    '<div class="card-header d-flex align-items-center gap-2 py-2" style="cursor:pointer" ' +
+      'data-bs-toggle="collapse" data-bs-target="#' + collapseId + '" aria-expanded="false" aria-controls="' + collapseId + '">' +
+      '<span class="me-1 text-secondary group-chevron">&#9654;</span>' +
+      '<span class="fw-semibold me-2 group-key-label">' + escHtml(key) + '</span>' +
+      '<span class="text-muted small group-summary">' + summary + '</span>' +
+      '<span class="ms-auto d-flex gap-2" onclick="event.stopPropagation()">' +
+        '<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(this)">Delete</button>' +
+      '</span>' +
     '</div>' +
-    '<div class="d-flex gap-2 align-items-center mt-3">' +
-    '<div class="btn-group btn-group-sm combo-toggle" role="group">' +
-    '<input type="radio" class="btn-check" name="combo_' + key + '" id="and_' + key + '" value="and"' + (combo === 'and' ? ' checked' : '') + '>' +
-    '<label class="btn btn-outline-secondary" for="and_' + key + '">AND</label>' +
-    '<input type="radio" class="btn-check" name="combo_' + key + '" id="or_' + key + '" value="or"' + (combo === 'or' ? ' checked' : '') + '>' +
-    '<label class="btn btn-outline-secondary" for="or_' + key + '">OR</label>' +
-    '</div>' +
-    '<div class="form-check mb-0">' +
-    '<input class="form-check-input do-remove" type="checkbox" id="rem_' + key + '"' + (doRemove ? ' checked' : '') + '>' +
-    '<label class="form-check-label small" for="rem_' + key + '">Remove unlisted</label>' +
-    '</div>' +
-    '<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(this)">Delete</button>' +
-    '</div></div>' +
-    '<div class="card-body">' +
-    '<div class="row mb-2">' +
-    '<div class="col"><label class="form-label small fw-semibold mb-0">Group Name</label>' +
-    '<input type="text" class="form-control form-control-sm group-name" value="' + escHtml(gc.name || '') + '"></div>' +
-    '<div class="col"><label class="form-label small fw-semibold mb-0">Description</label>' +
-    '<input type="text" class="form-control form-control-sm group-desc" value="' + escHtml(gc.description || '') + '"></div>' +
-    '</div>' +
-    '<p class="section-heading">Filters</p>' +
-    filtersHtml +
-    '<button class="btn btn-sm btn-outline-primary mt-2" onclick="addFilter(this)">+ Add Filter</button>' +
+    // ── Collapsible body ────────────────────────────────────────────────────
+    '<div class="collapse" id="' + collapseId + '">' +
+      '<div class="card-body">' +
+        '<div class="row mb-2">' +
+          '<div class="col-sm-3">' +
+            '<label class="form-label small fw-semibold mb-0">Group email prefix</label>' +
+            '<input type="text" class="form-control form-control-sm group-key" value="' + escHtml(key) + '">' +
+          '</div>' +
+          '<div class="col-sm-3">' +
+            '<label class="form-label small fw-semibold mb-0">Group Name</label>' +
+            '<input type="text" class="form-control form-control-sm group-name" value="' + escHtml(gc.name || '') + '">' +
+          '</div>' +
+          '<div class="col-sm-4">' +
+            '<label class="form-label small fw-semibold mb-0">Description</label>' +
+            '<input type="text" class="form-control form-control-sm group-desc" value="' + escHtml(gc.description || '') + '">' +
+          '</div>' +
+          '<div class="col-sm-2 d-flex flex-column gap-1 justify-content-end">' +
+            '<div class="btn-group btn-group-sm combo-toggle" role="group">' +
+              '<input type="radio" class="btn-check" name="combo_' + collapseId + '" id="and_' + collapseId + '" value="and"' + (combo === 'and' ? ' checked' : '') + '>' +
+              '<label class="btn btn-outline-secondary" for="and_' + collapseId + '">AND</label>' +
+              '<input type="radio" class="btn-check" name="combo_' + collapseId + '" id="or_' + collapseId + '" value="or"' + (combo === 'or' ? ' checked' : '') + '>' +
+              '<label class="btn btn-outline-secondary" for="or_' + collapseId + '">OR</label>' +
+            '</div>' +
+            '<div class="form-check mb-0">' +
+              '<input class="form-check-input do-remove" type="checkbox" id="rem_' + collapseId + '"' + (doRemove ? ' checked' : '') + '>' +
+              '<label class="form-check-label small" for="rem_' + collapseId + '">Remove unlisted</label>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<p class="section-heading">Filters</p>' +
+        filtersHtml +
+        '<button class="btn btn-sm btn-outline-primary mt-2" onclick="addFilter(this)">+ Add Filter</button>' +
+      '</div>' +
     '</div>';
+
+  // Rotate chevron when expanded/collapsed
+  const collapseEl = div.querySelector('.collapse');
+  collapseEl.addEventListener('show.bs.collapse', function() {
+    div.querySelector('.group-chevron').innerHTML = '&#9660;';
+  });
+  collapseEl.addEventListener('hide.bs.collapse', function() {
+    div.querySelector('.group-chevron').innerHTML = '&#9654;';
+  });
 
   return div;
 }
@@ -631,7 +660,11 @@ function addFilter(btn) {
 function addGroup() {
   const key = 'new-group-' + Date.now();
   _groupsConfig[key] = { name: '', description: '', combination: 'and', filters: [], do_remove: true };
-  document.getElementById('groupsList').appendChild(buildGroupCard(key, _groupsConfig[key]));
+  const card = buildGroupCard(key, _groupsConfig[key]);
+  document.getElementById('groupsList').prepend(card);
+  // Expand the new card immediately so the user can fill it in.
+  const collapseEl = card.querySelector('.collapse');
+  bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle: false }).show();
 }
 
 function deleteGroup(btn) {
