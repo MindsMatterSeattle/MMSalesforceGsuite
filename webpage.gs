@@ -170,6 +170,31 @@ function runSuspendUsers() {
 }
 
 /**
+ * Suspends a single user by email and removes their row from the SuspendedUsers sheet.
+ * @param {string} email - the user's primary email address
+ * @returns {number} updated row count after removal
+ */
+function suspendSingleUser(email) {
+  var user = AdminDirectory.Users.get(email);
+  user.suspended = true;
+  AdminDirectory.Users.update(user, email);
+  console.log({ message: 'User Suspended', email: email });
+
+  // Remove the row from the SuspendedUsers sheet
+  var id = PropertiesService.getScriptProperties().getProperty('userSuspensionSheetID');
+  var sheet = SpreadsheetApp.openById(id).getSheetByName('SuspendedUsers');
+  var lastRow = sheet.getLastRow();
+  var values = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0]).trim() === email.trim()) {
+      sheet.deleteRow(i + 2);
+      break;
+    }
+  }
+  return getUserSuspensionRowCount();
+}
+
+/**
  * Triggers the main Salesforce -> Google sync.
  */
 function runSyncGoogleWithSalesforce() {

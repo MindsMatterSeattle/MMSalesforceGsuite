@@ -488,15 +488,47 @@ function refreshSuspendedUsers() {
         el.innerHTML = '<p class="text-muted">No users pending suspension.</p>';
         return;
       }
-      let html = '<table class="table table-sm table-hover"><thead><tr><th>Name</th><th>Email</th></tr></thead><tbody>';
+      let html = '<table class="table table-sm table-hover"><thead><tr><th>Name</th><th>Email</th><th></th></tr></thead><tbody>';
       rows.forEach(function(r) {
-        html += '<tr><td>' + escHtml(r.name) + '</td><td>' + escHtml(r.email) + '</td></tr>';
+        html += '<tr>' +
+          '<td>' + escHtml(r.name) + '</td>' +
+          '<td>' + escHtml(r.email) + '</td>' +
+          '<td><button class="btn btn-sm btn-outline-danger suspend-one-btn" data-email="' + escHtml(r.email) + '" data-name="' + escHtml(r.name) + '">Suspend</button></td>' +
+          '</tr>';
       });
       el.innerHTML = html + '</tbody></table>';
     })
     .withFailureHandler(function(e) { showToast('Load error: ' + e.message, false); })
     .getSuspendedUsersList();
 }
+
+// Event delegation for individual suspend buttons
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.suspend-one-btn');
+  if (!btn) return;
+  const email = btn.dataset.email;
+  const name  = btn.dataset.name;
+  showConfirm(
+    'Suspend User',
+    'Suspend ' + name + ' (' + email + ')?',
+    function() {
+      btn.disabled = true;
+      btn.textContent = '...';
+      google.script.run
+        .withSuccessHandler(function(count) {
+          showToast('Suspended ' + email, true);
+          document.getElementById('suspensionStatus').textContent = count + ' user(s) remaining';
+          refreshSuspendedUsers();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Suspend';
+          showToast('Failed: ' + err.message, false);
+        })
+        .suspendSingleUser(email);
+    }
+  );
+});
 
 function confirmSuspend() {
   showConfirm(
