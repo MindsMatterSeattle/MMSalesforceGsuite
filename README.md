@@ -141,17 +141,21 @@ TODO: Make the generation of this spreadsheet automated
 Open project on web browser
 Hit file>project properties > script properties
 
-    newUserSheetID = [note from above] 
+    newUserSheetID = [note from above]
     salesforceSpreadSheetID = [note from above]
     userSuspensionSheetID = [note from above]
     salesforceSheetName = [note from above]
     domainname = mindsmatterXXXX.org [your google domain]
 
-TODO: make the spreadsheet creation and variable setting automated.
+    You only need to set these five required properties by hand here.
+    After the Admin Dashboard is deployed (step 23), all configuration variables —
+    including optional ones like protectedAccounts, draft email IDs, and dry_run —
+    can be viewed and edited on the Configuration tab of the dashboard without
+    touching the Script Properties editor.
 
-14. configure desired groups
-    edit groups_conf.js to reflect the groups you want to have managed by the script.
-    each configuration follows a format
+14. Configure desired groups
+    For the initial setup, edit groups_conf.js to define the groups you want managed.
+    Each group entry follows this format:
 
     "GROUP_NAME":{
         "name": "the name of my group",
@@ -168,16 +172,27 @@ TODO: make the spreadsheet creation and variable setting automated.
         "do_remove": true or false, whether you want the script to actively remove members that don't meet these criteria
     }
 
-    run setup_groups function to automatically create all the groups that have not yet been created.  If groups were created before, you may need to transfer ownership of that group to the admin account.
+    After the Admin Dashboard is deployed (step 23), you can add, edit, and delete
+    groups visually from the Groups tab — no need to edit groups_conf.js directly.
+    Column names and available values are populated automatically from the Salesforce
+    sheet, so you can pick them from dropdowns rather than typing them by hand.
+
+    Run the setup_groups function to automatically create any Google Groups that do not
+    yet exist.  If groups were created before, you may need to transfer ownership of
+    each group to the admin account.
 
 15. Do a dry run of user creation.
-    Edit dry_run = false, to dry_run = true (~line 282) in script.
-    Manually trigger script on script.google.com “run>run function>syncGoogleWithSalesforce”
-    Wait ~5 minutes for 140 users (till tan box goes away) (more with more users)
-    view> logs to see what would have happened.  Iterate on fixing data in salesforce till desired resullt is achieved.
-    If satisfied, edit dry_run=true, and rerun.  Accounts should be created and group memberships.
+    Enable dry run mode — either via the Dry Run toggle on the Admin Dashboard (step 23),
+    or by setting dry_run = true in Script Properties.
+    Then trigger the sync — either via the “Run Sync Now” button on the Dashboard, or
+    manually on script.google.com via run > run function > syncGoogleWithSalesforce.
+    Wait ~5 minutes for 140 users (more with more users), then check view > Logs to see
+    what would have happened.  Iterate on fixing data in Salesforce until the result looks right.
+    When satisfied, turn off dry run mode and re-run — accounts will be created and
+    group memberships set.
 
-    Fix missing group memberships, manually add appropriate volunteers to google classrooms if you are using this gsuite feature. Todo: make this automated and optional.
+    Fix any missing group memberships, and manually add volunteers to Google Classrooms
+    if you are using that feature (this is not yet automated).
 
 
 16. Create your intranet sites using sites.google.com
@@ -214,14 +229,16 @@ Write a draft email template in the admin account gmail page introducing new use
     Minds Matter Seattle Technology Team
 
 ```
-19. Identify the ID of the draft email you saved...
-open the gscript project. 
-open MailMerge.gs
-run>run function>getDraftId
-view>Logs
-note the ID after the : of the subject line
-save this ID in the project properties:
-file>project properties>Script properties.  Set newAccountDraftID = IDNOTEDABOVE
+19. Identify the ID of the draft email you saved.
+    After the Admin Dashboard is deployed (step 23), the easiest way to do this is
+    to open the Configuration tab, scroll to "Email / Merge", and use the draft picker
+    dropdowns for "New Account Welcome Draft" and "Contact Update Email Draft".
+    The picker lists all drafts in the admin Gmail account by subject line — select
+    the correct one and the ID is saved automatically.
+
+    Alternatively, find the ID manually via the Apps Script editor:
+    open MailMerge.gs, run getDraftId, and check the Logs for the ID after the colon.
+    Then set newAccountDraftID in Script Properties > Script properties.
 
 20. Test run_merge
     Add some data to the UserCreation spreadsheet
@@ -229,12 +246,15 @@ file>project properties>Script properties.  Set newAccountDraftID = IDNOTEDABOVE
     Those people should receive emails with the text filled in
     and the rows should be marked "done" 
 
-21. Add special accounts you want to be protected, add them to a script property
-    Name: protectedAccounts
-    Value (example): admin,finance,marketing,seniorzoom,sophomorezoom,juniorzoom
-    Test auditActive
-    run the auditactive script
-    check the suspendedUsers spreadsheet to see who would be marked for suspension
+21. Add special accounts you want to be protected.
+    On the Admin Dashboard Configuration tab, find "Protected Accounts" under Other and
+    enter a comma-separated list of email prefixes (e.g. admin,finance,marketing).
+    Alternatively, set the protectedAccounts script property directly.
+
+    Then test the audit — either click "Run Audit" on the User Management tab of the
+    dashboard, or run auditActive from the Apps Script editor.
+    Check the User Management tab (or the SuspendedUsers spreadsheet directly) to
+    review which accounts would be flagged for suspension before running the actual suspend.
 22. Setup triggers
     Go to script.google.com, select the project you created.
     click vertical dots on right hand side of screen, next to Project Details
@@ -245,6 +265,38 @@ file>project properties>Script properties.  Set newAccountDraftID = IDNOTEDABOVE
     auditActive (every day)
     syncGoogleWithSalesforce_v2 (every 12 hours)
     run_merge (every 12 hours)
+
+23. Deploy the Admin Dashboard web app
+    The Admin Dashboard (index.html + webpage.gs) is served as a Google Apps Script Web App.
+    Deploy it once to get a stable URL, then re-deploy whenever you push code changes.
+
+    First deployment:
+    a. Open the project at script.google.com and select your SalesforceSync project.
+    b. Click Deploy > New deployment.
+    c. Click the gear icon next to "Select type" and choose Web app.
+    d. Fill in the deployment settings:
+         Description:      Admin Dashboard v1.0 (or any label you like)
+         Execute as:       Me (the admin account that owns the script)
+         Who has access:   Only myself  (or a specific Google Group of admins)
+    e. Click Deploy.
+    f. Copy the Web app URL shown — this is the permanent dashboard URL.
+       Bookmark it; it does not change between re-deployments.
+    g. On first visit, Google will ask you to authorize the script.
+       Review the requested permissions and click Allow.
+
+    Re-deploying after code changes (clasp push or manual edits):
+    a. Click Deploy > Manage deployments.
+    b. Find your existing deployment and click the pencil (Edit) icon.
+    c. Change the Version dropdown to "New version".
+    d. Optionally update the description to reflect what changed.
+    e. Click Deploy. The same URL now serves the updated code.
+
+    Verifying the deployment:
+    - Open the Web app URL; the navbar should show the domain name and a version badge (e.g. v1.0.0).
+    - The version badge value comes from APP_VERSION in version.gs — bump that constant
+      before re-deploying so you can confirm the new code is live.
+    - If required script properties are not yet set, a yellow warning banner will list
+      the missing fields; fill them in on the Configuration tab before running any syncs.
 
 <!-- 
 Install a mail merge add-on on your “User Creation” spreadsheet.  We use “Yet another Mail Merge”.  Run the add-on to email users.  Free version limited to emailing 50 people per day, $40/year to make it more than that. 
