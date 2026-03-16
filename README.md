@@ -23,32 +23,56 @@ https://support.google.com/a/answer/60218?hl=en
 
 
 
-2. Setup a salesforce report that includes all the volunteers and students you want to have accounts.  We set ours up as follows 
+2. Setup a Salesforce report that includes all the volunteers and students you want to have accounts.
 
-Filtered By:1 AND (2 OR 3)   Edit 
-   
-    a) Chapter equals Seattle 
-   
-    b) Application Status equals Current 
-   
-    c) Application Status equals Accepted 
+Use the **Contacts and Engagement History** report type. 
+Set Contacts = "All Contacts" and Anniversay Date = "All Time".
 
-It should have the following columns
+Set the filter logic to `(1 AND 2 AND 3) OR (1 AND 4 AND 5)` with these filters:
 
-    Year
-    Application Status
-    Contact Record Type
-    First Name
-    Last Name
-    Email
-    Phone
-    Role (Non-Leadership)
-    Leadership
-    Leadership Sub-Role
-    Student Year Association
+    1. Organization: Account Name  equals  Seattle Chapter
+    2. Status                      equals  Current
+    3. Engagement Type             equals  Board Member, College Program Student, Employee, High School Student, Volunteer
+    4. Status                      equals  Former
+    5. Engagement Type             equals  High School Student
 
-We also put these fields to get them into gsuites
-Mailing Street	Mailing City	Mailing State/Province	Mailing Zip/Postal Code	Mailing Country		Mobile
+This captures all current active members plus former High School Students (alumni).
+
+It should have the following columns.
+
+**Required by Code.js** (sync will break without these):
+
+    First Name                  — used to construct the org email and create the account
+    Last Name                   — used to construct the org email and create the account
+    Engagement Type             - used to identify volunteers, board members, employees, high school students (or college students)
+    Email                       — personal/home email to send new account information to 
+    Phone                       — stored on the new account
+    Status                      — Used to determine who is active, and to skip account creation for completed graduates
+    Contact Record Type         — used by group membership filters
+    Year                        — used by group membership filters (student cohort groups)
+    Role (Non-Leadership)       — used by group membership filters (mentors, instructors)
+    Student Year Association    — used by group membership filters (mentor-to-cohort matching)
+    Leadership                  — used by group membership filters (board, EC)
+    Leadership Sub-Role         — used by group membership filters (program directors, etc.)
+    
+
+**Required by update_contacts.js** (contact info sync back to Salesforce):
+
+    Mailing Street
+    Mailing City
+    Mailing State/Province
+    Mailing Zip/Postal Code
+    Mobile
+    Employer
+    Title
+    Contact ID                  — used to match the Google account to the Salesforce contact record
+
+**Informational / not directly used by any script:**
+
+    Full Name
+    Affiliation Name
+    Mailing Country
+    Employer lookup: Account Name
 
 4. Clean the salesforce data so it accurately reflects your chapters current volunteers and students including EC status, board status, instructor group status, etc. 
 
