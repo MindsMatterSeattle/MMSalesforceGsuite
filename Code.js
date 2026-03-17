@@ -366,10 +366,26 @@ function suspendUsers() {
  * Controlled by the groups_config_dict configuration in groups_conf.js.
  */
 function syncGoogleWithSalesforce_v2() {
-  var dry_run = false;         // set to true to log what would happen without making any changes
-  var do_remove_default = true; // remove unlisted members from groups unless a group overrides this
+  // dry_run can be toggled from the admin web UI via the 'dry_run' script property.
+  var dry_run = PropertiesService.getScriptProperties().getProperty('dry_run') === 'true';
+  // Falls back to true if not set — preserves existing behaviour.
+  var do_remove_default = PropertiesService.getScriptProperties().getProperty('do_remove_default') !== 'false';
   var domainname = PropertiesService.getScriptProperties().getProperty('domainname');
-  var groups_config = groups_config_dict[domainname]; // group rules for this chapter's domain
+
+  // Guard: required properties must be set before the sync can run.
+  var required = ['domainname', 'salesforceSpreadSheetID', 'salesforceSheetName',
+                  'newUserSheetID', 'userSuspensionSheetID'];
+  var props = PropertiesService.getScriptProperties();
+  var unset = required.filter(function(k) { return !props.getProperty(k); });
+  if (unset.length > 0) {
+    throw new Error('syncGoogleWithSalesforce_v2: missing required script properties: ' + unset.join(', ') +
+                    '. Set these in the Admin Dashboard (Configuration tab) before running.');
+  }
+
+  // Use the groups config stored in script properties (editable via the admin UI) if present,
+  // otherwise fall back to the hardcoded config in groups_conf.js.
+  var groups_config_json = PropertiesService.getScriptProperties().getProperty('groupsConfig_' + domainname);
+  var groups_config = groups_config_json ? JSON.parse(groups_config_json) : groups_config_dict[domainname];
 
   // Phase 1: Pre-load Google Group objects and initialize the expected-membership lists.
   // We fetch each Group object up front so we only make one GroupsApp API call per group,

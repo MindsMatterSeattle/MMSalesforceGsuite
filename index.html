@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MM Admin Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://apis.google.com/js/api.js?onload=onApiLoad"></script>
+  <style>
+    body { background: #f8f9fa; }
+    .navbar-brand { font-weight: 700; letter-spacing: .5px; }
+    .stat-card .card-title { font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; }
+    .stat-card .display-6 { font-weight: 700; }
+    .group-card { border-left: 4px solid #0d6efd; }
+    .group-card .card-header { background: #f0f4ff; }
+    .filter-row td { vertical-align: middle; }
+    .toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; }
+    .section-heading { font-size: .75rem; font-weight: 600; text-transform: uppercase;
+                       letter-spacing: .08em; color: #6c757d; margin-bottom: .5rem; }
+    .step-card { border-top: 3px solid #0d6efd; }
+    .step-num { width: 2rem; height: 2rem; border-radius: 50%; background: #0d6efd;
+                color: #fff; display: inline-flex; align-items: center; justify-content: center;
+                font-weight: 700; font-size: .85rem; margin-right: .5rem; }
+  </style>
+</head>
+<body>
+
+<!-- Setup warning banner (hidden until getSetupStatus returns missing props) -->
+<div id="setupBanner" class="alert alert-danger alert-dismissible rounded-0 mb-0 d-none" role="alert">
+  <strong>Setup required:</strong> The following properties are not set — sync functions will fail until they are configured.
+  <span id="setupMissingList"></span>
+  <a href="#" class="alert-link ms-2" onclick="switchTab('config'); return false;">Go to Configuration tab</a>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark bg-primary">
+  <div class="container-fluid">
+    <span class="navbar-brand">Minds Matter Admin</span>
+    <span class="navbar-text text-white-50 ms-auto me-3" id="domainBadge"></span>
+    <span class="navbar-text text-white-50 small" id="versionBadge"></span>
+  </div>
+</nav>
+
+<!-- Tabs -->
+<div class="container-fluid mt-3">
+  <ul class="nav nav-tabs" id="mainTabs">
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#setup" id="setupTab">Setup <span id="setupTabBadge" class="badge text-bg-warning d-none">⚠</span></a></li>
+    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#dashboard">Dashboard</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#config">Configuration</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#users">User Management</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#contacts">Contact Updates</a></li>
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#groups">Groups</a></li>
+  </ul>
+
+  <div class="tab-content pt-3">
+
+    <!-- ── SETUP ────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="setup">
+      <div class="row justify-content-center">
+        <div class="col-lg-8">
+          <h5 class="mb-3">First-Time Setup</h5>
+          <p class="text-muted small mb-4">Complete each step in order. Steps with action buttons are automated — steps with links open the relevant tab for you to fill in manually.</p>
+          <div id="setupChecklist"></div>
+          <div id="setupComplete" class="alert alert-success d-none mt-3">
+            <strong>Setup complete!</strong> All steps are done.
+            <a href="#" class="alert-link ms-2" onclick="switchTab('dashboard'); return false;">Go to Dashboard</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── DASHBOARD ─────────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="dashboard">
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="card stat-card h-100">
+            <div class="card-body">
+              <div class="card-title">Pending Suspensions</div>
+              <div class="display-6 text-danger" id="statSuspensions">–</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card stat-card h-100">
+            <div class="card-body">
+              <div class="card-title">Contact Updates Pending</div>
+              <div class="display-6 text-warning" id="statContactPending">–</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card stat-card h-100">
+            <div class="card-body">
+              <div class="card-title">Contact Update Errors</div>
+              <div class="display-6 text-danger" id="statContactErrors">–</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card stat-card h-100">
+            <div class="card-body">
+              <div class="card-title">Dry Run Mode</div>
+              <div class="form-check form-switch mt-1">
+                <input class="form-check-input" type="checkbox" role="switch" id="dryRunToggle" style="width:3em;height:1.5em;">
+                <label class="form-check-label" for="dryRunToggle" id="dryRunLabel">Loading…</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-body">
+              <div class="section-heading">Last Sync Run</div>
+              <div id="syncStatus" class="mb-2 text-muted">–</div>
+              <button class="btn btn-sm btn-primary" onclick="runAction('runSyncGoogleWithSalesforce', this, 'syncStatus', 'Sync complete')">
+                Run Sync Now
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-body">
+              <div class="section-heading">Last Mail Merge Run</div>
+              <div id="mergeStatus" class="mb-2 text-muted">–</div>
+              <button class="btn btn-sm btn-secondary" onclick="runAction('runRunMerge', this, 'mergeStatus', 'Mail merge complete')">
+                Send New Account Emails
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-heading">Quick Links</div>
+      <div id="sheetLinks" class="mb-3"></div>
+    </div>
+
+    <!-- ── CONFIGURATION ─────────────────────────────────────── -->
+    <div class="tab-pane fade" id="config">
+      <div class="row">
+        <div class="col-md-8 col-lg-6">
+          <div id="configForm"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── USER MANAGEMENT ───────────────────────────────────── -->
+    <div class="tab-pane fade" id="users">
+      <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-outline-primary" onclick="runAction('runAuditActive', this, 'suspensionStatus', null, refreshSuspendedUsers)">
+          Run Audit (find users to suspend)
+        </button>
+        <button class="btn btn-danger" onclick="confirmSuspend()">
+          Suspend All Pending Users
+        </button>
+      </div>
+      <div id="suspensionStatus" class="mb-2"></div>
+
+      <div id="suspendedUsersSection">
+        <div class="section-heading">Users Pending Suspension</div>
+        <div id="suspendedUsersTable"></div>
+      </div>
+    </div>
+
+    <!-- ── CONTACT UPDATES ───────────────────────────────────── -->
+    <div class="tab-pane fade" id="contacts">
+      <div class="row g-3">
+
+        <div class="col-12">
+          <div class="card step-card">
+            <div class="card-body">
+              <h6 class="card-title"><span class="step-num">1</span> Generate Pre-filled Form Links</h6>
+              <p class="text-muted small mb-2">Creates a mail merge sheet with a unique pre-filled contact update form link for each person in the Salesforce spreadsheet.</p>
+              <button class="btn btn-sm btn-primary" onclick="runAction('runCreatePrefilledLinks', this, 'step1Status', 'Form links generated')">
+                Generate Form Links
+              </button>
+              <div id="step1Status" class="mt-2"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="card step-card">
+            <div class="card-body">
+              <h6 class="card-title"><span class="step-num">2</span> Send Contact Update Emails</h6>
+              <p class="text-muted small mb-2">Sends the pre-filled form link to each person's org email. Rows already marked "Done" are skipped.</p>
+              <div id="mailMergeStatus" class="mb-2 text-muted small"></div>
+              <button class="btn btn-sm btn-primary" onclick="runAction('runSendMailMergeEmails', this, 'step2Status', 'Emails sent')">
+                Send Contact Update Emails
+              </button>
+              <div id="step2Status" class="mt-2"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="card step-card">
+            <div class="card-body">
+              <h6 class="card-title"><span class="step-num">3</span> Push Responses to Salesforce</h6>
+              <p class="text-muted small mb-2">Reads form responses, updates Google Workspace user profiles, and pushes changes back to Salesforce.</p>
+              <div id="contactUpdateStatus" class="mb-2 text-muted small"></div>
+              <button class="btn btn-sm btn-primary" onclick="runAction('runUpdateSalesforceContactInfo', this, 'step3Status', null, refreshContactStatus)">
+                Push Responses to Salesforce
+              </button>
+              <div id="step3Status" class="mt-2"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── GROUPS ────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="groups">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <span class="section-heading d-block">Group Configuration</span>
+          <small class="text-muted">Changes are saved to script properties and take effect on the next sync run.</small>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary btn-sm" onclick="addGroup()">+ Add Group</button>
+          <button class="btn btn-success btn-sm" onclick="saveGroups()">Save All Groups</button>
+        </div>
+      </div>
+      <div id="groupsWarning" class="alert alert-warning d-none">
+        The saved config differs from groups_conf.js. The script property version is currently active.
+      </div>
+      <div id="groupsList"></div>
+    </div>
+
+  </div><!-- /tab-content -->
+</div><!-- /container -->
+
+<!-- Toast container -->
+<div class="toast-container">
+  <div id="toastEl" class="toast align-items-center border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toastBody"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title" id="confirmTitle">Confirm</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger btn-sm" id="confirmOk">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Google Picker ────────────────────────────────────────────────────────────
+const CLIENT_ID = '920945310291-dgk6ft0tnh9q3jeehb2g3chot282nfsh.apps.googleusercontent.com';
+let pickerTargetInput = null;
+
+function onApiLoad() {
+  gapi.load('auth2', function() {
+    gapi.auth2.init({ client_id: CLIENT_ID }).then(function() { gapi.load('picker', {}); });
+  });
+}
+
+function openPicker(inputId) {
+  pickerTargetInput = inputId;
+  const picker = new google.picker.PickerBuilder()
+    .addView(google.picker.ViewId.SPREADSHEETS)
+    .setCallback(function(data) {
+      if (data.action === google.picker.Action.PICKED) {
+        const el = document.getElementById(inputId);
+        el.value = data.docs[0].id;
+        el.dispatchEvent(new Event('change'));
+      }
+    })
+    .build();
+  picker.setVisible(true);
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg, ok) {
+  const el = document.getElementById('toastEl');
+  el.className = 'toast align-items-center border-0 text-bg-' + (ok ? 'success' : 'danger');
+  document.getElementById('toastBody').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(el, { delay: 4000 }).show();
+}
+
+// ─── Generic async action runner ──────────────────────────────────────────────
+function runAction(fnName, btn, statusId, successMsg, callback) {
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Running…';
+  if (statusId) document.getElementById(statusId).innerHTML = '';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.disabled = false;
+      btn.innerHTML = orig;
+      const msg = successMsg || (typeof result === 'string' ? result : 'Done');
+      if (statusId) document.getElementById(statusId).innerHTML =
+        '<span class="text-success">' + msg + '</span>';
+      showToast(msg, true);
+      if (callback) callback(result);
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.innerHTML = orig;
+      const msg = 'Error: ' + err.message;
+      if (statusId) document.getElementById(statusId).innerHTML =
+        '<span class="text-danger">' + msg + '</span>';
+      showToast(msg, false);
+    })
+    [fnName]();
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+function loadDashboard() {
+  google.script.run
+    .withSuccessHandler(function(d) {
+      document.getElementById('statSuspensions').textContent    = d.pendingSuspensions;
+      document.getElementById('statContactPending').textContent = d.contactPending;
+      document.getElementById('statContactErrors').textContent  = d.contactErrors;
+      document.getElementById('syncStatus').textContent =
+        d.syncStatus + (d.syncTimestamp !== '--' ? '  ·  ' + d.syncTimestamp : '');
+      document.getElementById('mergeStatus').textContent =
+        d.mergeStatus + (d.mergeTimestamp !== '--' ? '  ·  ' + d.mergeTimestamp : '');
+      const toggle = document.getElementById('dryRunToggle');
+      toggle.checked = d.dryRun;
+      document.getElementById('dryRunLabel').textContent = d.dryRun ? 'ON (no changes made)' : 'OFF (live)';
+    })
+    .withFailureHandler(function(e) { showToast('Dashboard load failed: ' + e.message, false); })
+    .getDashboardData();
+}
+
+document.getElementById('dryRunToggle').addEventListener('change', function() {
+  const val = this.checked ? 'true' : 'false';
+  document.getElementById('dryRunLabel').textContent = this.checked ? 'ON (no changes made)' : 'OFF (live)';
+  google.script.run
+    .withFailureHandler(function(e) { showToast('Save failed: ' + e.message, false); })
+    .saveScriptVariable('dry_run', val);
+});
+
+function loadSheetLinks() {
+  google.script.run
+    .withSuccessHandler(function(sheets) {
+      const el = document.getElementById('sheetLinks');
+      el.innerHTML = '';
+      sheets.forEach(function(s) {
+        if (s.url) el.innerHTML += '<a href="' + s.url + '" target="_blank" class="btn btn-sm btn-outline-secondary me-2 mb-1">' + s.name + '</a>';
+      });
+    })
+    .getSheetsData();
+}
+
+// ─── Configuration Tab ────────────────────────────────────────────────────────
+const CONFIG_GROUPS = [
+  { heading: 'Domain',         keys: ['domainname'] },
+  { heading: 'Spreadsheets',   keys: ['salesforceSpreadSheetID','salesforceSheetName','newUserSheetID','userSuspensionSheetID','contactMailMergeSheetID'] },
+  { heading: 'Email / Merge',  keys: ['newAccountDraftID','AccountUpdateDraftID'] },
+  { heading: 'Salesforce API', keys: ['sfUsername','sfAuthToken','sfPassword'] },
+  { heading: 'Other',          keys: ['protectedAccounts','contactUpdateFormId','dry_run','do_remove_default'] }
+];
+
+let _gmailDrafts = null; // cache: [{id, subject, gmailUrl}]
+
+function loadConfig() {
+  // Fetch vars and drafts in parallel; render once both arrive.
+  let _vars = null;
+
+  function tryRender() {
+    if (!_vars || !_gmailDrafts) return; // wait for both
+    renderConfig(_vars, _gmailDrafts);
+  }
+
+  google.script.run
+    .withSuccessHandler(function(vars) { _vars = vars; tryRender(); })
+    .withFailureHandler(function(e) { showToast('Config load error: ' + e.message, false); })
+    .getScriptVariablesData();
+
+  if (_gmailDrafts) {
+    // Already cached from a previous load
+    tryRender();
+  } else {
+    google.script.run
+      .withSuccessHandler(function(drafts) { _gmailDrafts = drafts; tryRender(); })
+      .withFailureHandler(function() { _gmailDrafts = []; tryRender(); }) // non-fatal
+      .getGmailDrafts();
+  }
+}
+
+function renderConfig(vars, drafts) {
+  const byName = {};
+  vars.forEach(function(v) { byName[v.name] = v; });
+
+  // Build a lookup from draft id -> gmailUrl for the open-link button
+  const draftUrlById = {};
+  drafts.forEach(function(d) { draftUrlById[d.id] = d.gmailUrl; });
+
+  const container = document.getElementById('configForm');
+  container.innerHTML = '';
+
+  CONFIG_GROUPS.forEach(function(grp) {
+    let html = '<p class="section-heading mt-3">' + grp.heading + '</p>';
+    grp.keys.forEach(function(key) {
+      const v = byName[key];
+      if (!v) return;
+      const missing = v.required && !v.value;
+      const requiredBadge = v.required ? ' <span class="badge text-bg-secondary">required</span>' : '';
+
+      if (v.type === 'checkbox') {
+        html += '<div class="mb-2 form-check">' +
+          '<input class="form-check-input config-field" type="checkbox" id="cfg_' + v.name + '" data-name="' + v.name + '"' + (v.value === 'true' ? ' checked' : '') + '>' +
+          '<label class="form-check-label" for="cfg_' + v.name + '">' + v.label + '</label></div>';
+
+      } else if (v.type === 'draft') {
+        // Draft picker: select populated with Gmail draft subjects + open link
+        const currentUrl = v.value ? (draftUrlById[v.value] || '') : '';
+        let options = '<option value="">— select a draft —</option>';
+        drafts.forEach(function(d) {
+          options += '<option value="' + escHtml(d.id) + '"' + (d.id === v.value ? ' selected' : '') + '>' + escHtml(d.subject) + '</option>';
+        });
+        // If a value is saved but the draft no longer appears in the list, add a placeholder entry
+        if (v.value && !draftUrlById[v.value]) {
+          options += '<option value="' + escHtml(v.value) + '" selected>(saved ID: ' + escHtml(v.value) + ')</option>';
+        }
+        const openDisabled = currentUrl ? '' : ' disabled';
+        html += '<div class="mb-2"><label class="form-label small fw-semibold mb-0">' + v.label + requiredBadge + '</label>' +
+          '<div class="input-group input-group-sm">' +
+          '<select class="form-select config-field" id="cfg_' + v.name + '" data-name="' + v.name + '" data-type="draft" data-draft-urls=\'' + JSON.stringify(draftUrlById).replace(/'/g, '&#39;') + '\'>' +
+          options + '</select>' +
+          '<a id="draftLink_' + v.name + '" href="' + escHtml(currentUrl) + '" target="_blank" class="btn btn-sm btn-outline-secondary"' + openDisabled + '>Open in Gmail &#x2197;</a>' +
+          '</div></div>';
+
+      } else {
+        const inputType = v.type === 'password' ? 'password' : 'text';
+        const picker = v.type === 'sheet' ?
+          ' <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openPicker(\'cfg_' + v.name + '\')">Pick</button>' : '';
+        const invalidClass = missing ? ' is-invalid' : '';
+        const feedback = missing ? '<div class="invalid-feedback">Required — sync will fail without this.</div>' : '';
+        html += '<div class="mb-2"><label class="form-label small fw-semibold mb-0">' + v.label + requiredBadge + '</label>' +
+          '<div class="input-group input-group-sm">' +
+          '<input type="' + inputType + '" class="form-control config-field' + invalidClass + '" id="cfg_' + v.name + '" data-name="' + v.name + '" data-required="' + v.required + '" value="' + escHtml(v.value) + '">' +
+          picker + '</div>' + feedback + '</div>';
+      }
+    });
+    container.innerHTML += html;
+  });
+
+  // Auto-save on change; update draft open-link when draft select changes
+  document.querySelectorAll('.config-field').forEach(function(el) {
+    el.addEventListener('change', function() {
+      const name = this.dataset.name;
+      const value = this.type === 'checkbox' ? String(this.checked) : this.value;
+
+      // Keep the "Open in Gmail" link in sync with the selected draft
+      if (this.dataset.type === 'draft') {
+        const urls = JSON.parse(this.dataset.draftUrls || '{}');
+        const linkEl = document.getElementById('draftLink_' + name);
+        if (linkEl) {
+          const url = urls[value] || '';
+          linkEl.href = url;
+          linkEl.toggleAttribute('disabled', !url);
+        }
+      }
+
+      if (this.dataset.required === 'true') {
+        this.classList.toggle('is-invalid', !value);
+        this.classList.toggle('is-valid', !!value);
+      }
+      google.script.run
+        .withSuccessHandler(function() {
+          showToast('Saved ' + name, true);
+          checkSetupStatus();
+        })
+        .withFailureHandler(function(e) { showToast('Save failed: ' + e.message, false); })
+        .saveScriptVariable(name, value);
+    });
+  });
+}
+
+function switchTab(tabId) {
+  const tab = document.querySelector('[href="#' + tabId + '"]');
+  if (tab) bootstrap.Tab.getOrCreateInstance(tab).show();
+}
+
+// ─── User Management ──────────────────────────────────────────────────────────
+function refreshSuspendedUsers() {
+  google.script.run
+    .withSuccessHandler(function(rows) {
+      const el = document.getElementById('suspendedUsersTable');
+      if (!rows.length) {
+        el.innerHTML = '<p class="text-muted">No users pending suspension.</p>';
+        return;
+      }
+      let html = '<table class="table table-sm table-hover"><thead><tr><th>Name</th><th>Email</th><th></th></tr></thead><tbody>';
+      rows.forEach(function(r) {
+        html += '<tr>' +
+          '<td>' + escHtml(r.name) + '</td>' +
+          '<td>' + escHtml(r.email) + '</td>' +
+          '<td><button class="btn btn-sm btn-outline-danger suspend-one-btn" data-email="' + escHtml(r.email) + '" data-name="' + escHtml(r.name) + '">Suspend</button></td>' +
+          '</tr>';
+      });
+      el.innerHTML = html + '</tbody></table>';
+    })
+    .withFailureHandler(function(e) { showToast('Load error: ' + e.message, false); })
+    .getSuspendedUsersList();
+}
+
+// Event delegation for individual suspend buttons
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.suspend-one-btn');
+  if (!btn) return;
+  const email = btn.dataset.email;
+  const name  = btn.dataset.name;
+  showConfirm(
+    'Suspend User',
+    'Suspend ' + name + ' (' + email + ')?',
+    function() {
+      btn.disabled = true;
+      btn.textContent = '...';
+      google.script.run
+        .withSuccessHandler(function(count) {
+          showToast('Suspended ' + email, true);
+          document.getElementById('suspensionStatus').textContent = count + ' user(s) remaining';
+          refreshSuspendedUsers();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Suspend';
+          showToast('Failed: ' + err.message, false);
+        })
+        .suspendSingleUser(email);
+    }
+  );
+});
+
+function confirmSuspend() {
+  showConfirm(
+    'Suspend Users',
+    'This will suspend ALL users in the pending list. Are you sure?',
+    function() {
+      const btn = document.querySelector('[onclick="confirmSuspend()"]');
+      runAction('runSuspendUsers', btn, 'suspensionStatus', 'Users suspended', refreshSuspendedUsers);
+    }
+  );
+}
+
+// ─── Contact Updates ──────────────────────────────────────────────────────────
+function refreshContactStatus(result) {
+  google.script.run
+    .withSuccessHandler(function(s) {
+      document.getElementById('contactUpdateStatus').textContent =
+        'Pending: ' + s.unprocessedCount + '  ·  Errors: ' + s.errorCount;
+    })
+    .getContactUpdateStatus();
+}
+
+// ─── Groups ───────────────────────────────────────────────────────────────────
+let _domainname = '';
+let _groupsConfig = {};
+let _sfColumns = []; // column names from the Salesforce sheet header row
+let _sfColumnValues = {}; // cache: columnName -> string[] of distinct values
+
+function loadGroups() {
+  google.script.run
+    .withSuccessHandler(function(data) {
+      _domainname = data.domainname;
+      _groupsConfig = data.config;
+      document.getElementById('domainBadge').textContent = _domainname;
+      // Fetch sheet columns, then render (columns may already be loaded on re-open)
+      if (_sfColumns.length) {
+        renderGroups();
+      } else {
+        google.script.run
+          .withSuccessHandler(function(cols) {
+            _sfColumns = cols;
+            rebuildColumnDatalist();
+            renderGroups();
+          })
+          .withFailureHandler(function(e) {
+            // Non-fatal: render without suggestions if sheet isn't configured yet
+            showToast('Could not load column names: ' + e.message, false);
+            renderGroups();
+          })
+          .getSalesforceColumns();
+      }
+    })
+    .withFailureHandler(function(e) { showToast('Groups load error: ' + e.message, false); })
+    .getGroupsConfig();
+}
+
+function rebuildColumnDatalist() {
+  let dl = document.getElementById('sfColumnList');
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = 'sfColumnList';
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = _sfColumns.map(function(c) {
+    return '<option value="' + escHtml(c) + '">';
+  }).join('');
+}
+
+function renderGroups() {
+  const container = document.getElementById('groupsList');
+  container.innerHTML = '';
+  Object.keys(_groupsConfig).forEach(function(key) {
+    container.appendChild(buildGroupCard(key, _groupsConfig[key]));
+  });
+  // Pre-fetch value suggestions for all columns already present in existing filters.
+  container.querySelectorAll('.filter-row').forEach(function(row) {
+    const colInput = row.querySelector('.filter-col');
+    const valInput = row.querySelector('.filter-val');
+    if (colInput && valInput && colInput.value.trim()) {
+      loadColumnValues(colInput.value.trim(), valInput);
+    }
+  });
+}
+
+function buildGroupCard(key, gc) {
+  const div = document.createElement('div');
+  div.className = 'card group-card mb-2';
+  div.dataset.groupKey = key;
+
+  const combo = (gc.combination || 'and').toLowerCase();
+  const doRemove = !!gc.do_remove;
+  const collapseId = 'gc_' + key.replace(/\W+/g, '_') + '_' + Date.now();
+  const filterCount = (gc.filters || []).length;
+  const summary = (gc.name ? escHtml(gc.name) + ' &mdash; ' : '') +
+    filterCount + ' filter' + (filterCount !== 1 ? 's' : '');
+
+  let filtersHtml = '<table class="table table-sm mb-0"><thead><tr>' +
+    '<th>Column</th><th>Condition</th><th>Value</th><th></th></tr></thead><tbody>';
+  (gc.filters || []).forEach(function(f, i) {
+    filtersHtml += filterRowHtml(f, i);
+  });
+  filtersHtml += '</tbody></table>';
+
+  div.innerHTML =
+    // ── Collapsed header (always visible) ──────────────────────────────────
+    '<div class="card-header d-flex align-items-center gap-2 py-2" style="cursor:pointer" ' +
+      'data-bs-toggle="collapse" data-bs-target="#' + collapseId + '" aria-expanded="false" aria-controls="' + collapseId + '">' +
+      '<span class="me-1 text-secondary group-chevron">&#9654;</span>' +
+      '<span class="fw-semibold me-2 group-key-label">' + escHtml(key) + '</span>' +
+      '<span class="text-muted small group-summary">' + summary + '</span>' +
+      '<span class="ms-auto d-flex gap-2" onclick="event.stopPropagation()">' +
+        '<button class="btn btn-sm btn-outline-danger" onclick="deleteGroup(this)">Delete</button>' +
+      '</span>' +
+    '</div>' +
+    // ── Collapsible body ────────────────────────────────────────────────────
+    '<div class="collapse" id="' + collapseId + '">' +
+      '<div class="card-body">' +
+        '<div class="row mb-2">' +
+          '<div class="col-sm-3">' +
+            '<label class="form-label small fw-semibold mb-0">Group email prefix</label>' +
+            '<input type="text" class="form-control form-control-sm group-key" value="' + escHtml(key) + '">' +
+          '</div>' +
+          '<div class="col-sm-3">' +
+            '<label class="form-label small fw-semibold mb-0">Group Name</label>' +
+            '<input type="text" class="form-control form-control-sm group-name" value="' + escHtml(gc.name || '') + '">' +
+          '</div>' +
+          '<div class="col-sm-4">' +
+            '<label class="form-label small fw-semibold mb-0">Description</label>' +
+            '<input type="text" class="form-control form-control-sm group-desc" value="' + escHtml(gc.description || '') + '">' +
+          '</div>' +
+          '<div class="col-sm-2 d-flex flex-column gap-1 justify-content-end">' +
+            '<div class="btn-group btn-group-sm combo-toggle" role="group">' +
+              '<input type="radio" class="btn-check" name="combo_' + collapseId + '" id="and_' + collapseId + '" value="and"' + (combo === 'and' ? ' checked' : '') + '>' +
+              '<label class="btn btn-outline-secondary" for="and_' + collapseId + '">AND</label>' +
+              '<input type="radio" class="btn-check" name="combo_' + collapseId + '" id="or_' + collapseId + '" value="or"' + (combo === 'or' ? ' checked' : '') + '>' +
+              '<label class="btn btn-outline-secondary" for="or_' + collapseId + '">OR</label>' +
+            '</div>' +
+            '<div class="form-check mb-0">' +
+              '<input class="form-check-input do-remove" type="checkbox" id="rem_' + collapseId + '"' + (doRemove ? ' checked' : '') + '>' +
+              '<label class="form-check-label small" for="rem_' + collapseId + '">Remove unlisted</label>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<p class="section-heading">Filters</p>' +
+        filtersHtml +
+        '<button class="btn btn-sm btn-outline-primary mt-2" onclick="addFilter(this)">+ Add Filter</button>' +
+      '</div>' +
+    '</div>';
+
+  // Rotate chevron when expanded/collapsed
+  const collapseEl = div.querySelector('.collapse');
+  collapseEl.addEventListener('show.bs.collapse', function() {
+    div.querySelector('.group-chevron').innerHTML = '&#9660;';
+  });
+  collapseEl.addEventListener('hide.bs.collapse', function() {
+    div.querySelector('.group-chevron').innerHTML = '&#9654;';
+  });
+
+  return div;
+}
+
+function filterRowHtml(f, i) {
+  const cond = f.condition || 'equals';
+  const col  = f.column || '';
+  // Datalist id for column suggestions (shared); datalist for values is per-column.
+  const valListId = col ? 'sfValList_' + col.replace(/\W+/g, '_') : '';
+  return '<tr class="filter-row">' +
+    '<td><input type="text" class="form-control form-control-sm filter-col" list="sfColumnList" value="' + escHtml(col) + '" placeholder="Column name"></td>' +
+    '<td><select class="form-select form-select-sm filter-cond">' +
+    '<option value="equals"' + (cond === 'equals' ? ' selected' : '') + '>equals</option>' +
+    '<option value="contains"' + (cond === 'contains' ? ' selected' : '') + '>contains</option>' +
+    '</select></td>' +
+    '<td><input type="text" class="form-control form-control-sm filter-val"' + (valListId ? ' list="' + escHtml(valListId) + '"' : '') + ' value="' + escHtml(String(f.value !== undefined ? f.value : '')) + '" placeholder="Value"></td>' +
+    '<td><button class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove()">×</button></td></tr>';
+}
+
+/**
+ * Fetches distinct values for the given column from the Salesforce sheet
+ * (using the cache), then ensures a <datalist> with those options exists in
+ * the DOM and updates the list attribute on valInput to point to it.
+ */
+function loadColumnValues(columnName, valInput) {
+  if (!columnName) { valInput.removeAttribute('list'); return; }
+  const dlId = 'sfValList_' + columnName.replace(/\W+/g, '_');
+  valInput.setAttribute('list', dlId);
+
+  // Serve from cache immediately if available.
+  if (_sfColumnValues[columnName]) {
+    ensureValDatalist(dlId, _sfColumnValues[columnName]);
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(vals) {
+      _sfColumnValues[columnName] = vals;
+      ensureValDatalist(dlId, vals);
+    })
+    .withFailureHandler(function() { /* non-fatal */ })
+    .getSalesforceColumnValues(columnName);
+}
+
+function ensureValDatalist(dlId, values) {
+  let dl = document.getElementById(dlId);
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = dlId;
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = values.map(function(v) { return '<option value="' + escHtml(v) + '">'; }).join('');
+}
+
+function addFilter(btn) {
+  const tbody = btn.previousElementSibling.querySelector('tbody');
+  const tr = document.createElement('tr');
+  tr.className = 'filter-row';
+  tr.innerHTML = filterRowHtml({ column: '', condition: 'equals', value: '' }, tbody.rows.length);
+  tbody.appendChild(tr);
+}
+
+function addGroup() {
+  const key = 'new-group-' + Date.now();
+  _groupsConfig[key] = { name: '', description: '', combination: 'and', filters: [], do_remove: true };
+  const card = buildGroupCard(key, _groupsConfig[key]);
+  document.getElementById('groupsList').prepend(card);
+  // Expand the new card immediately so the user can fill it in.
+  const collapseEl = card.querySelector('.collapse');
+  bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle: false }).show();
+}
+
+function deleteGroup(btn) {
+  const card = btn.closest('.group-card');
+  const key = card.querySelector('.group-key').value || card.dataset.groupKey;
+  showConfirm('Delete Group', 'Delete group "' + escHtml(key) + '"?', function() { card.remove(); });
+}
+
+function saveGroups() {
+  const config = {};
+  document.querySelectorAll('.group-card').forEach(function(card) {
+    const key = card.querySelector('.group-key').value.trim();
+    if (!key) return;
+    const filters = [];
+    card.querySelectorAll('.filter-row').forEach(function(row) {
+      const col  = row.querySelector('.filter-col').value.trim();
+      const cond = row.querySelector('.filter-cond').value;
+      const val  = row.querySelector('.filter-val').value;
+      if (col) filters.push({ column: col, condition: cond, value: val });
+    });
+    const comboEl = card.querySelector('.combo-toggle input:checked');
+    config[key] = {
+      name:        card.querySelector('.group-name').value.trim(),
+      description: card.querySelector('.group-desc').value.trim(),
+      combination: comboEl ? comboEl.value : 'and',
+      filters:     filters,
+      do_remove:   card.querySelector('.do-remove').checked
+    };
+  });
+
+  google.script.run
+    .withSuccessHandler(function() { showToast('Groups configuration saved', true); _groupsConfig = config; })
+    .withFailureHandler(function(e) { showToast('Save failed: ' + e.message, false); })
+    .saveGroupsConfig(_domainname, JSON.stringify(config));
+}
+
+// ─── Confirm modal ────────────────────────────────────────────────────────────
+function showConfirm(title, body, onOk) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmBody').textContent  = body;
+  const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal'));
+  const okBtn = document.getElementById('confirmOk');
+  const newOk = okBtn.cloneNode(true); // remove previous listeners
+  okBtn.parentNode.replaceChild(newOk, okBtn);
+  newOk.addEventListener('click', function() { modal.hide(); onOk(); });
+  modal.show();
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Setup status ─────────────────────────────────────────────────────────────
+function checkSetupStatus() {
+  google.script.run
+    .withSuccessHandler(function(status) {
+      const banner = document.getElementById('setupBanner');
+      if (status.allSet) {
+        banner.classList.add('d-none');
+      } else {
+        const names = status.missing.map(function(m) { return '<code>' + escHtml(m.label) + '</code>'; }).join(', ');
+        document.getElementById('setupMissingList').innerHTML = ' ' + names + '.';
+        banner.classList.remove('d-none');
+      }
+    })
+    .getSetupStatus();
+}
+
+// ─── Setup Wizard ─────────────────────────────────────────────────────────────
+
+const SETUP_STEPS = [
+  {
+    id:       'domainSet',
+    label:    'Set your domain name',
+    detail:   'Enter your Google Workspace domain (e.g. mindsmatterXXX.org) in the Configuration tab.',
+    type:     'link',
+    linkTab:  'config',
+    linkText: 'Go to Configuration'
+  },
+  {
+    id:       'salesforceSheetSet',
+    label:    'Link your Salesforce contact sheet',
+    detail:   'Set the Salesforce Spreadsheet ID and Sheet Tab Name in the Configuration tab.',
+    type:     'link',
+    linkTab:  'config',
+    linkText: 'Go to Configuration'
+  },
+  {
+    id:       'spreadsheetsSet',
+    label:    'Create tracking spreadsheets',
+    detail:   'Creates the User Creation and User Suspension spreadsheets in your Google Drive and saves their IDs.',
+    type:     'action',
+    fn:       'runSetupSpreadsheets',
+    btnText:  'Create Spreadsheets'
+  },
+  {
+    id:       'groupsConfigSeeded',
+    label:    'Seed default group configuration',
+    detail:   'Pre-populates 16 standard Minds Matter groups (active, volunteers, students, cohort groups, instructors, board, EC). You can customise them on the Groups tab afterwards.',
+    type:     'action',
+    fn:       'runInitDefaultGroups',
+    btnText:  'Seed Default Groups'
+  },
+  {
+    id:       'reviewGroups',
+    label:    'Review and customise group rules',
+    detail:   'Open the Groups tab to edit group filters, add new groups, or remove ones you don\'t need.',
+    type:     'link',
+    linkTab:  'groups',
+    linkText: 'Go to Groups',
+    always:   true  // always shown as informational, never auto-checked
+  },
+  {
+    id:       'googleGroupsCreated',
+    label:    'Create Google Groups in your domain',
+    detail:   'Creates any Google Groups that don\'t yet exist in your Google Workspace domain.',
+    type:     'action',
+    fn:       'runSetupGroups',
+    btnText:  'Create Google Groups'
+  },
+  {
+    id:       'triggersSet',
+    label:    'Set up scheduled triggers',
+    detail:   'Creates three time-based triggers: auditActive (daily), syncGoogleWithSalesforce_v2 (every 12 h), run_merge (every 12 h).',
+    type:     'action',
+    fn:       'runSetupTriggers',
+    btnText:  'Set Up Triggers'
+  },
+  {
+    id:       'draftsSet',
+    label:    'Set email draft templates',
+    detail:   'Choose your welcome email and contact-update email drafts from Gmail using the pickers in the Configuration tab.',
+    type:     'link',
+    linkTab:  'config',
+    linkText: 'Go to Configuration'
+  },
+  {
+    id:       'firstSync',
+    label:    'Run first sync in dry-run mode',
+    detail:   'Dry Run is enabled by default for new setups. Click to run the sync — check Apps Script Logs afterwards to review what would have happened.',
+    type:     'action',
+    fn:       'runSyncGoogleWithSalesforce',
+    btnText:  'Run Dry-Run Sync',
+    always:   true
+  }
+];
+
+function loadSetupChecklist() {
+  google.script.run
+    .withSuccessHandler(renderSetupChecklist)
+    .withFailureHandler(function(e) { showToast('Setup load error: ' + e.message, false); })
+    .getSetupChecklist();
+}
+
+function renderSetupChecklist(state) {
+  // Determine trigger status shorthand
+  const allTriggersOn = state.triggers && state.triggers.every(function(t) { return t.active; });
+  const triggerDetail = state.triggers
+    ? state.triggers.map(function(t) { return (t.active ? '✅' : '⚠') + ' ' + t.name; }).join(' &nbsp; ')
+    : '';
+
+  // Map checklist ids to boolean state
+  const done = {
+    domainSet:          state.domainSet,
+    salesforceSheetSet: state.salesforceSheetSet,
+    spreadsheetsSet:    state.spreadsheetsSet,
+    groupsConfigSeeded: state.groupsConfigSeeded,
+    reviewGroups:       false,  // always informational
+    googleGroupsCreated:false,  // can't auto-detect; treated as action-only
+    triggersSet:        allTriggersOn,
+    draftsSet:          state.draftsSet,
+    firstSync:          false   // always informational
+  };
+
+  // Show/hide setup tab badge
+  const allRequired = done.domainSet && done.salesforceSheetSet && done.spreadsheetsSet &&
+                      done.groupsConfigSeeded && done.triggersSet && done.draftsSet;
+  document.getElementById('setupTabBadge').classList.toggle('d-none', allRequired);
+  document.getElementById('setupComplete').classList.toggle('d-none', !allRequired);
+
+  let html = '';
+  SETUP_STEPS.forEach(function(step, idx) {
+    const isDone  = done[step.id];
+    const icon    = step.always ? '&#9654;' : (isDone ? '✅' : '⚠️');
+    const rowClass = isDone && !step.always ? 'text-muted' : '';
+    const extraDetail = step.id === 'triggersSet' && triggerDetail ? '<br><small class="text-muted">' + triggerDetail + '</small>' : '';
+
+    let action = '';
+    if (step.type === 'link') {
+      action = '<a href="#" class="btn btn-sm btn-outline-primary" onclick="switchTab(\'' + step.linkTab + '\'); return false;">' + step.linkText + ' &#8599;</a>';
+    } else if (step.type === 'action') {
+      const disabled = (isDone && !step.always) ? ' disabled' : '';
+      action = '<button class="btn btn-sm btn-outline-primary setup-action-btn"' + disabled +
+               ' data-fn="' + step.fn + '" data-step="' + step.id + '">' + step.btnText + '</button>';
+    }
+
+    html += '<div class="card mb-2 ' + rowClass + '">' +
+      '<div class="card-body py-2 d-flex align-items-center gap-3">' +
+        '<span style="font-size:1.2rem;min-width:1.6rem;text-align:center">' + icon + '</span>' +
+        '<div class="flex-grow-1">' +
+          '<div class="fw-semibold small">' + (idx + 1) + '. ' + step.label + '</div>' +
+          '<div class="text-muted small">' + step.detail + extraDetail + '</div>' +
+        '</div>' +
+        '<div class="ms-2">' + action + '</div>' +
+      '</div>' +
+    '</div>';
+  });
+
+  document.getElementById('setupChecklist').innerHTML = html;
+
+  // Wire action buttons
+  document.querySelectorAll('.setup-action-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const fn   = this.dataset.fn;
+      const self = this;
+      self.disabled = true;
+      self.textContent = '...';
+      google.script.run
+        .withSuccessHandler(function() {
+          showToast('Done!', true);
+          loadSetupChecklist(); // re-render with updated state
+        })
+        .withFailureHandler(function(e) {
+          self.disabled = false;
+          const step = SETUP_STEPS.find(function(s) { return s.id === self.dataset.step; });
+          self.textContent = step ? step.btnText : 'Retry';
+          showToast('Error: ' + e.message, false);
+        })
+        [fn]();
+    });
+  });
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  google.script.run
+    .withSuccessHandler(function(v) { document.getElementById('versionBadge').textContent = 'v' + v; })
+    .getAppVersion();
+  checkSetupStatus();
+  loadDashboard();
+  loadSheetLinks();
+  loadConfig();
+  refreshSuspendedUsers();
+  refreshContactStatus();
+
+  // Load setup checklist and auto-activate Setup tab if setup is incomplete
+  google.script.run
+    .withSuccessHandler(function(state) {
+      renderSetupChecklist(state);
+      const allRequired = state.domainSet && state.salesforceSheetSet && state.spreadsheetsSet &&
+                          state.groupsConfigSeeded && state.draftsSet &&
+                          state.triggers && state.triggers.every(function(t) { return t.active; });
+      if (!allRequired) {
+        bootstrap.Tab.getOrCreateInstance(document.getElementById('setupTab')).show();
+      }
+    })
+    .withFailureHandler(function() { /* non-fatal */ })
+    .getSetupChecklist();
+
+  // Reload checklist each time the Setup tab is shown
+  document.getElementById('setupTab').addEventListener('shown.bs.tab', loadSetupChecklist);
+
+  // Load groups when that tab is first activated
+  document.querySelector('[href="#groups"]').addEventListener('shown.bs.tab', function() {
+    if (!_domainname) loadGroups();
+  });
+
+  // When a column field changes, fetch value suggestions for the adjacent value field.
+  document.getElementById('groupsList').addEventListener('change', function(e) {
+    if (e.target.classList.contains('filter-col')) {
+      const valInput = e.target.closest('tr').querySelector('.filter-val');
+      loadColumnValues(e.target.value.trim(), valInput);
+    }
+  });
+});
+</script>
+</body>
+</html>
