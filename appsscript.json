@@ -1,16 +1,23 @@
 {
   "timeZone": "America/Los_Angeles",
   "dependencies": {
-    "enabledAdvancedServices": [{
-      "userSymbol": "AdminDirectory",
-      "serviceId": "admin",
-      "version": "directory_v1"
-    }, {
-      "userSymbol": "Sheets",
-      "serviceId": "sheets",
-      "version": "v4"
-    }]
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "AdminDirectory",
+        "serviceId": "admin",
+        "version": "directory_v1"
+      },
+      {
+        "userSymbol": "Sheets",
+        "serviceId": "sheets",
+        "version": "v4"
+      }
+    ]
   },
   "exceptionLogging": "STACKDRIVER",
-  "runtimeVersion": "V8"
+  "runtimeVersion": "V8",
+  "webapp": {
+    "executeAs": "USER_DEPLOYING",
+    "access": "MYSELF"
+  }
 }
