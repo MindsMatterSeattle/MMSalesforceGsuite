@@ -15,7 +15,39 @@ Salesforce was the obvious choice for what this actively maintained source of tr
 
 This document outlines the steps required to deploy this synchronization system and is meant to provide a roadmap for other Minds Matter chapters that might want to replicate what Minds Matter Seattle has done. 
 
-# Deployment Steps
+# Quick Start (new chapter)
+
+If you are setting up this system for a new Minds Matter chapter, here is the fast path:
+
+1. **Set up a Google Workspace domain** with a dedicated admin account (not tied to any individual).
+   Enable directory sharing in the admin console.
+
+2. **Set up a Salesforce report synced to a google sheet** — see steps 2-9 in the Reference section below for the exact report type and filter logic.
+
+3. **Install the script** in your admin account:
+   - Clone this repository and install clasp: `npm install -g @google/clasp`
+   - `clasp login` (use admin account credentials)
+   - `clasp create --title "SalesforceSync"` then `clasp push`
+
+4. **Deploy the Admin Dashboard** as a Google Apps Script Web App:
+   - In the Apps Script editor (script.google.com): Deploy > New deployment > Web app
+   - Execute as: Me | Who has access: Only myself (or your admin group)
+   - Copy the Web app URL
+
+5. **Open the Dashboard URL** and click through the Setup tab in order:
+   - Enter your domain name and link your Salesforce sheet (Configuration tab)
+   - Click "Create Spreadsheets" to auto-create the User Creation and Suspension sheets
+   - Click "Seed Default Groups" to pre-populate 16 standard group definitions
+   - Review and adjust groups on the Groups tab
+   - Click "Create Google Groups" and "Set Up Triggers"
+   - Set your email draft templates (Configuration tab)
+   - Run the first sync in dry-run mode and review the Apps Script logs
+
+That's it. The reference section below documents each step in detail for anyone who wants to understand what's happening under the hood or needs to troubleshoot.
+
+---
+
+# Deployment Steps (Reference)
 1. Setup a gsuite domain with an admin account, this is an account that will run the infrastructure, but is not tied to a particular individual in the organization, so that the system will keep working in the event that any individual leaves the org.
 beyond the scope of these docs]
 Enable directory sharing in the admin console. 
@@ -37,6 +69,7 @@ Set the filter logic to `(1 AND 2 AND 3) OR (1 AND 4 AND 5)` with these filters:
     5. Engagement Type             equals  High School Student
 
 This captures all current active members plus former High School Students (alumni).
+You can choose different settings if you want to more or less people to be synced.
 
 It should have the following columns.
 
@@ -86,7 +119,7 @@ Add aliases for all existing users with pattern FirstName.LastName@mindsmatterXX
 
 7. Create a spreadsheet in your admin accounts gdrive.  We call ours “SEA Current Contacts” you will need the ID of the spreadsheet later (salesforceSpreadSheetID) 
 We decided to give everyone in ec@ and board access to this spreadsheet.  So we modifies shared it with the group ec@ and  board@. This should automatically add and remove access to this information as users are added to and remove from these groups.
-TODO: make this running a function. 
+
 
 8. Install the “Data connector for salesforce” add-on from gdrive, use it to connect to your salesforce account, and pull the report into the sheet. 
 https://gsuite.google.com/marketplace/app/data_connector_for_salesforce/857627895310
@@ -103,7 +136,7 @@ Note the name of the sheet’s tab (salesforceSheetName)
 Note the ID of spreadsheet (newUserSheetID)
 TODO: Make the generation of this spreadsheet automated
 
-11. Create a “UserSuspension” spreadsheet owned by admin (note ID “userSuspensionSheetID”)
+11. Create a “UserSuspension” spreadsheet owned by admin (note ID “userSuspensionSheetID”).  Note: This can be done now in the setup tab of the web app.
 
     Add a “SuspendedUsers” tab to spreadsheet.
 
@@ -111,7 +144,6 @@ TODO: Make the generation of this spreadsheet automated
 
     TODO: maybe make this spreadsheet follow the bulk user update format. To allow easier semi-automated user suspension.
 
-    TODO: make the creation of this spreadsheet a function you can run
 
 
 12. Install the script in your google code repo from development machine

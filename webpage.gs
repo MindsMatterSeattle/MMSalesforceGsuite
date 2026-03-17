@@ -336,6 +336,85 @@ function saveGroupsConfig(domainname, configJson) {
   return 'Saved';
 }
 
+// ─── Setup Wizard ─────────────────────────────────────────────────────────────
+
+/**
+ * Returns the full setup checklist state in a single call so the Setup tab
+ * can render without multiple round-trips.
+ */
+function getSetupChecklist() {
+  var props = PropertiesService.getScriptProperties();
+  var domainname = props.getProperty('domainname') || '';
+  return {
+    domainSet:          !!domainname,
+    salesforceSheetSet: !!(props.getProperty('salesforceSpreadSheetID') && props.getProperty('salesforceSheetName')),
+    spreadsheetsSet:    !!(props.getProperty('newUserSheetID') && props.getProperty('userSuspensionSheetID')),
+    groupsConfigSeeded: !!(domainname && props.getProperty('groupsConfig_' + domainname)),
+    triggers:           getTriggersStatus(),
+    draftsSet:          !!props.getProperty('newAccountDraftID')
+  };
+}
+
+/**
+ * Returns which of the 3 recommended triggers are currently active.
+ * @returns {{name: string, active: boolean}[]}
+ */
+function getTriggersStatus() {
+  var existing = ScriptApp.getProjectTriggers()
+    .map(function(t) { return t.getHandlerFunction(); });
+  return [
+    'auditActive',
+    'syncGoogleWithSalesforce_v2',
+    'run_merge'
+  ].map(function(fn) {
+    return { name: fn, active: existing.indexOf(fn) !== -1 };
+  });
+}
+
+/**
+ * Creates the User Creation and UserSuspension spreadsheets if they don't exist,
+ * sets the corresponding script properties, and returns their IDs.
+ */
+function runSetupSpreadsheets() {
+  setupSpreadsheets();
+  var props = PropertiesService.getScriptProperties();
+  return {
+    newUserSheetID:        props.getProperty('newUserSheetID'),
+    userSuspensionSheetID: props.getProperty('userSuspensionSheetID')
+  };
+}
+
+/**
+ * Seeds the groups config with the default cross-chapter set if no config is
+ * already saved for this domain.  Returns the seeded config.
+ */
+function runInitDefaultGroups() {
+  var domainname = PropertiesService.getScriptProperties().getProperty('domainname');
+  if (!domainname) throw new Error('Domain name must be set before initialising groups.');
+  var key = 'groupsConfig_' + domainname;
+  if (PropertiesService.getScriptProperties().getProperty(key)) {
+    return JSON.parse(PropertiesService.getScriptProperties().getProperty(key));
+  }
+  var config = getDefaultGroupsConfig();
+  saveGroupsConfig(domainname, JSON.stringify(config));
+  return config;
+}
+
+/**
+ * Creates any missing Google Groups in the domain.
+ */
+function runSetupGroups() {
+  setupGroups();
+  return 'Google Groups created (or already existed).';
+}
+
+/**
+ * Creates the 3 recommended time-based triggers if not already present.
+ */
+function runSetupTriggers() {
+  return setupTriggers();
+}
+
 // ─── Gmail Drafts ─────────────────────────────────────────────────────────────
 
 /**

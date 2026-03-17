@@ -46,6 +46,7 @@
 <!-- Tabs -->
 <div class="container-fluid mt-3">
   <ul class="nav nav-tabs" id="mainTabs">
+    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#setup" id="setupTab">Setup <span id="setupTabBadge" class="badge text-bg-warning d-none">⚠</span></a></li>
     <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#dashboard">Dashboard</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#config">Configuration</a></li>
     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#users">User Management</a></li>
@@ -54,6 +55,21 @@
   </ul>
 
   <div class="tab-content pt-3">
+
+    <!-- ── SETUP ────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="setup">
+      <div class="row justify-content-center">
+        <div class="col-lg-8">
+          <h5 class="mb-3">First-Time Setup</h5>
+          <p class="text-muted small mb-4">Complete each step in order. Steps with action buttons are automated — steps with links open the relevant tab for you to fill in manually.</p>
+          <div id="setupChecklist"></div>
+          <div id="setupComplete" class="alert alert-success d-none mt-3">
+            <strong>Setup complete!</strong> All steps are done.
+            <a href="#" class="alert-link ms-2" onclick="switchTab('dashboard'); return false;">Go to Dashboard</a>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- ── DASHBOARD ─────────────────────────────────────────── -->
     <div class="tab-pane fade show active" id="dashboard">
@@ -825,6 +841,171 @@ function checkSetupStatus() {
     .getSetupStatus();
 }
 
+// ─── Setup Wizard ─────────────────────────────────────────────────────────────
+
+const SETUP_STEPS = [
+  {
+    id:       'domainSet',
+    label:    'Set your domain name',
+    detail:   'Enter your Google Workspace domain (e.g. mindsmatterXXX.org) in the Configuration tab.',
+    type:     'link',
+    linkTab:  'config',
+    linkText: 'Go to Configuration'
+  },
+  {
+    id:       'salesforceSheetSet',
+    label:    'Link your Salesforce contact sheet',
+    detail:   'Set the Salesforce Spreadsheet ID and Sheet Tab Name in the Configuration tab.',
+    type:     'link',
+    linkTab:  'config',
+    linkText: 'Go to Configuration'
+  },
+  {
+    id:       'spreadsheetsSet',
+    label:    'Create tracking spreadsheets',
+    detail:   'Creates the User Creation and User Suspension spreadsheets in your Google Drive and saves their IDs.',
+    type:     'action',
+    fn:       'runSetupSpreadsheets',
+    btnText:  'Create Spreadsheets'
+  },
+  {
+    id:       'groupsConfigSeeded',
+    label:    'Seed default group configuration',
+    detail:   'Pre-populates 16 standard Minds Matter groups (active, volunteers, students, cohort groups, instructors, board, EC). You can customise them on the Groups tab afterwards.',
+    type:     'action',
+    fn:       'runInitDefaultGroups',
+    btnText:  'Seed Default Groups'
+  },
+  {
+    id:       'reviewGroups',
+    label:    'Review and customise group rules',
+    detail:   'Open the Groups tab to edit group filters, add new groups, or remove ones you don\'t need.',
+    type:     'link',
+    linkTab:  'groups',
+    linkText: 'Go to Groups',
+    always:   true  // always shown as informational, never auto-checked
+  },
+  {
+    id:       'googleGroupsCreated',
+    label:    'Create Google Groups in your domain',
+    detail:   'Creates any Google Groups that don\'t yet exist in your Google Workspace domain.',
+    type:     'action',
+    fn:       'runSetupGroups',
+    btnText:  'Create Google Groups'
+  },
+  {
+    id:       'triggersSet',
+    label:    'Set up scheduled triggers',
+    detail:   'Creates three time-based triggers: auditActive (daily), syncGoogleWithSalesforce_v2 (every 12 h), run_merge (every 12 h).',
+    type:     'action',
+    fn:       'runSetupTriggers',
+    btnText:  'Set Up Triggers'
+  },
+  {
+    id:       'draftsSet',
+    label:    'Set email draft templates',
+    detail:   'Choose your welcome email and contact-update email drafts from Gmail using the pickers in the Configuration tab.',
+    type:     'link',
+    linkTab:  'config',
+    linkText: 'Go to Configuration'
+  },
+  {
+    id:       'firstSync',
+    label:    'Run first sync in dry-run mode',
+    detail:   'Dry Run is enabled by default for new setups. Click to run the sync — check Apps Script Logs afterwards to review what would have happened.',
+    type:     'action',
+    fn:       'runSyncGoogleWithSalesforce',
+    btnText:  'Run Dry-Run Sync',
+    always:   true
+  }
+];
+
+function loadSetupChecklist() {
+  google.script.run
+    .withSuccessHandler(renderSetupChecklist)
+    .withFailureHandler(function(e) { showToast('Setup load error: ' + e.message, false); })
+    .getSetupChecklist();
+}
+
+function renderSetupChecklist(state) {
+  // Determine trigger status shorthand
+  const allTriggersOn = state.triggers && state.triggers.every(function(t) { return t.active; });
+  const triggerDetail = state.triggers
+    ? state.triggers.map(function(t) { return (t.active ? '✅' : '⚠') + ' ' + t.name; }).join(' &nbsp; ')
+    : '';
+
+  // Map checklist ids to boolean state
+  const done = {
+    domainSet:          state.domainSet,
+    salesforceSheetSet: state.salesforceSheetSet,
+    spreadsheetsSet:    state.spreadsheetsSet,
+    groupsConfigSeeded: state.groupsConfigSeeded,
+    reviewGroups:       false,  // always informational
+    googleGroupsCreated:false,  // can't auto-detect; treated as action-only
+    triggersSet:        allTriggersOn,
+    draftsSet:          state.draftsSet,
+    firstSync:          false   // always informational
+  };
+
+  // Show/hide setup tab badge
+  const allRequired = done.domainSet && done.salesforceSheetSet && done.spreadsheetsSet &&
+                      done.groupsConfigSeeded && done.triggersSet && done.draftsSet;
+  document.getElementById('setupTabBadge').classList.toggle('d-none', allRequired);
+  document.getElementById('setupComplete').classList.toggle('d-none', !allRequired);
+
+  let html = '';
+  SETUP_STEPS.forEach(function(step, idx) {
+    const isDone  = done[step.id];
+    const icon    = step.always ? '&#9654;' : (isDone ? '✅' : '⚠️');
+    const rowClass = isDone && !step.always ? 'text-muted' : '';
+    const extraDetail = step.id === 'triggersSet' && triggerDetail ? '<br><small class="text-muted">' + triggerDetail + '</small>' : '';
+
+    let action = '';
+    if (step.type === 'link') {
+      action = '<a href="#" class="btn btn-sm btn-outline-primary" onclick="switchTab(\'' + step.linkTab + '\'); return false;">' + step.linkText + ' &#8599;</a>';
+    } else if (step.type === 'action') {
+      const disabled = (isDone && !step.always) ? ' disabled' : '';
+      action = '<button class="btn btn-sm btn-outline-primary setup-action-btn"' + disabled +
+               ' data-fn="' + step.fn + '" data-step="' + step.id + '">' + step.btnText + '</button>';
+    }
+
+    html += '<div class="card mb-2 ' + rowClass + '">' +
+      '<div class="card-body py-2 d-flex align-items-center gap-3">' +
+        '<span style="font-size:1.2rem;min-width:1.6rem;text-align:center">' + icon + '</span>' +
+        '<div class="flex-grow-1">' +
+          '<div class="fw-semibold small">' + (idx + 1) + '. ' + step.label + '</div>' +
+          '<div class="text-muted small">' + step.detail + extraDetail + '</div>' +
+        '</div>' +
+        '<div class="ms-2">' + action + '</div>' +
+      '</div>' +
+    '</div>';
+  });
+
+  document.getElementById('setupChecklist').innerHTML = html;
+
+  // Wire action buttons
+  document.querySelectorAll('.setup-action-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const fn   = this.dataset.fn;
+      const self = this;
+      self.disabled = true;
+      self.textContent = '...';
+      google.script.run
+        .withSuccessHandler(function() {
+          showToast('Done!', true);
+          loadSetupChecklist(); // re-render with updated state
+        })
+        .withFailureHandler(function(e) {
+          self.disabled = false;
+          const step = SETUP_STEPS.find(function(s) { return s.id === self.dataset.step; });
+          self.textContent = step ? step.btnText : 'Retry';
+          showToast('Error: ' + e.message, false);
+        })
+        [fn]();
+    });
+  });
+}
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
   google.script.run
@@ -836,6 +1017,23 @@ document.addEventListener('DOMContentLoaded', function() {
   loadConfig();
   refreshSuspendedUsers();
   refreshContactStatus();
+
+  // Load setup checklist and auto-activate Setup tab if setup is incomplete
+  google.script.run
+    .withSuccessHandler(function(state) {
+      renderSetupChecklist(state);
+      const allRequired = state.domainSet && state.salesforceSheetSet && state.spreadsheetsSet &&
+                          state.groupsConfigSeeded && state.draftsSet &&
+                          state.triggers && state.triggers.every(function(t) { return t.active; });
+      if (!allRequired) {
+        bootstrap.Tab.getOrCreateInstance(document.getElementById('setupTab')).show();
+      }
+    })
+    .withFailureHandler(function() { /* non-fatal */ })
+    .getSetupChecklist();
+
+  // Reload checklist each time the Setup tab is shown
+  document.getElementById('setupTab').addEventListener('shown.bs.tab', loadSetupChecklist);
 
   // Load groups when that tab is first activated
   document.querySelector('[href="#groups"]').addEventListener('shown.bs.tab', function() {
