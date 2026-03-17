@@ -1,3 +1,13 @@
+/**
+ * Sends a single mail-merge email for one spreadsheet row.
+ * Fills in the template subject, HTML body, and plain-text body from rowData,
+ * then sends via GmailApp. Also propagates cc/bcc if present in rowData.
+ *
+ * @param {Object} rowData - Object of column-name → cell-value pairs for this row.
+ * @param {Object} mergeData - Merge configuration containing template, subject, plainText,
+ *   attachments, inlineImages, name, from, cc, and bcc fields.
+ * @param {string} emailcol - Property name in rowData holding the recipient email address.
+ */
 function processRow(rowData, mergeData, emailcol) {
     var emailText = fillInTemplateFromObject(mergeData.template, rowData);
     var emailSubject = fillInTemplateFromObject(mergeData.subject, rowData);
@@ -8,6 +18,10 @@ function processRow(rowData, mergeData, emailcol) {
     console.log(rowData)
     GmailApp.sendEmail(rowData[emailcol], emailSubject, plainTextBody, mergeData);
 }
+/**
+ * Logs the ID and subject of every Gmail draft to the console.
+ * Useful for finding the draft ID needed by run_mail_merge().
+ */
 function getDraftId() {
     var drafts = GmailApp.getDrafts();
     for (var i = 0; i < drafts.length; i++) {
@@ -16,6 +30,17 @@ function getDraftId() {
     }
 }
 
+/**
+ * Runs a mail merge using a Gmail draft as the template and a Google Sheet as the data source.
+ * For each row where "Merge status" is blank, sends the email and marks the cell "Done".
+ * Rows that error are marked "Error" with a red background and the error message as a comment.
+ * Inline images embedded in the draft are preserved in the sent emails.
+ *
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss - Spreadsheet containing recipient data.
+ * @param {string} draftID - Gmail draft ID to use as the email template.
+ * @param {string} tocolumn - Normalized column name (from utils.js normalizeHeader) holding
+ *   the recipient email address.
+ */
 function run_mail_merge(ss, draftID, tocolumn) {
     var name = "Minds Matter"
     var domainname = PropertiesService.getScriptProperties().getProperty('domainname');
@@ -95,6 +120,11 @@ function run_mail_merge(ss, draftID, tocolumn) {
     }
 }
 
+/**
+ * Convenience wrapper that runs a mail merge for new-account welcome emails.
+ * Reads the draft ID from script property 'newAccountDraftID' and sends to the
+ * 'privateemail' column of the new-user tracking sheet ('newUserSheetID').
+ */
 function run_merge() {
     var draftID = PropertiesService.getScriptProperties().getProperty('newAccountDraftID');
     var userID = PropertiesService.getScriptProperties().getProperty('newUserSheetID');

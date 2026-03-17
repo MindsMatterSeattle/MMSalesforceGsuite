@@ -1,30 +1,45 @@
+/**
+ * groups_conf.js — Google Group membership rules, keyed by domain.
+ *
+ * groups_config_dict maps each G Suite domain to a groups config object.
+ * Each key in the config object is a Google Group prefix (e.g. "active" → active@domain).
+ * Each group entry has:
+ *
+ *   filters      {Array}   One or more filter rules. Each rule has:
+ *                            column    {string}  Salesforce spreadsheet column name
+ *                            condition {string}  "equals" or "contains"
+ *                            value     {*}       Value to match against
+ *   combination  {string}  "or" — user matches if any filter passes (default: "and")
+ *   name         {string}  Human-readable Google Group name
+ *   description  {string}  Google Group description
+ *   do_remove    {boolean} If true, members not matched by filters are removed from the group
+ *
+ * To add a new group, add an entry here and re-run setupGroups() + syncGoogleWithSalesforce_v2().
+ */
 var seattle_groups_config = {
     "active": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Status",
                 "condition": "equals",
-                "value": "Volunteer"
+                "value": "Current"
             },
-            {
-                "column": "Contact Record Type",
-                "condition": "equals",
-                "value": "Board Member"
-            },
-            {
-                "column": "Contact Record Type",
-                "condition": "equals",
-                "value": "Student"
-            },
-            {
-                "column": "Contact Record Type",
-                "condition": "equals",
-                "value": "Employee"
-            }
         ],
         "combination": "or",
         "name": "Minds Matter Seattle All",
         "description": "All Minds Matter Seattle active members",
+        "do_remove": true
+    },
+    "boardfinance":{
+        "filters": [
+              {
+                  "column": "Leadership Sub-Role",
+                  "condition": "contains",
+                  "value": "Chief Finance Officer"
+              }
+          ],
+        "name": "Minds Matter Seattle Board Finance Administrators",
+        "description": "Minds Matter Seattle Board Finance Administrators",
         "do_remove": true
     },
     "board": {
@@ -33,10 +48,28 @@ var seattle_groups_config = {
                 "column": "Leadership",
                 "condition": "contains",
                 "value": "Chapter Board"
+            },
+            {
+              "column": "Leadership Sub-Role",
+              "condition": "contains",
+              "value": "President/CEO"
             }
         ],
-        "name": "Minds Matter of Seattle Board",
-        "description": "Minds Matter of Seattle Board",
+         "combination": "or",
+        "name": "Minds Matter of Seattle Board and ED",
+        "description": "Minds Matter of Seattle Board and ED",
+        "do_remove": true
+    },
+        "boardonly": {
+        "filters": [
+            {
+                "column": "Leadership",
+                "condition": "contains",
+                "value": "Chapter Board"
+            }
+        ],
+        "name": "Minds Matter of Seattle Board Only",
+        "description": "Minds Matter of Seattle Board, no ED",
         "do_remove": true
     },
     "ec": {
@@ -54,7 +87,7 @@ var seattle_groups_config = {
     "volunteers": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
                 "value": "Volunteer"
             }
@@ -104,7 +137,7 @@ var seattle_groups_config = {
             {
                 "column": "Role (Non-Leadership)",
                 "condition": "contains",
-                "value": "College Counselor"
+                "value": "College Coach"
             },
             {
                 "column": "Role (Non-Leadership)",
@@ -114,12 +147,25 @@ var seattle_groups_config = {
             {
                 "column": "Leadership Sub-Role",
                 "condition": "contains",
-                "value": "College Counselor Lead"
+                "value": "Program Director  Senior"
             }
         ],
         "combination": "or",
-        "name": "Minds Matter Test Prep Instructors",
-        "description": "Minds Matter Test Prep Instructors",
+        "name": "Minds Matter Senior Enrichment Instructors",
+        "description": "Minds Matter Senior Enrichment Instructors",
+        "do_remove": true
+    },
+     "college-counseling": {
+        "filters": [
+            {
+                "column": "Leadership Sub-Role",
+                "condition": "contains",
+                "value": "Program Director  College Advising"
+            }
+        ],
+        "combination": "or",
+        "name": "Minds Matter College Advising",
+        "description": "Minds Matter College Advising",
         "do_remove": true
     },
     "summerprograms": {
@@ -156,9 +202,9 @@ var seattle_groups_config = {
     "students2025": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -173,9 +219,9 @@ var seattle_groups_config = {
     "students2022": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -190,9 +236,9 @@ var seattle_groups_config = {
     "students2023": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -207,9 +253,9 @@ var seattle_groups_config = {
     "students2024": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -220,6 +266,94 @@ var seattle_groups_config = {
         "combination": "and",
         "name": "Minds Matter Students Graduating 2024",
         "description": "Minds Matter Students Graduating 2024"
+    },
+    "students2027": {
+        "filters": [
+            {
+                "column": "Engagement Type",
+                "condition": "equals",
+                "value": "High School Student"
+            },
+            {
+                "column": "Year",
+                "condition": "equals",
+                "value": 2027
+            }
+        ],
+        "combination": "and",
+        "name": "Minds Matter Students Graduating 2027",
+        "description": "Minds Matter Students graduating in 2027"
+    },
+    "students2028": {
+        "filters": [
+            {
+                "column": "Engagement Type",
+                "condition": "equals",
+                "value": "High School Student"
+            },
+            {
+                "column": "Year",
+                "condition": "equals",
+                "value": 2028
+            }
+        ],
+        "combination": "and",
+        "name": "Minds Matter Students Graduating 2028",
+        "description": "Minds Matter Students graduating in 2028"
+    },
+    "2027mentors": {
+        "filters": [
+            {
+                "column": "Role (Non-Leadership)",
+                "condition": "contains",
+                "value": "Mentor"
+            },
+            {
+                "column": "Student Year Association",
+                "condition": "equals",
+                "value": "2027"
+            }
+        ],
+        "combination": "and",
+        "name": "Minds Matter Mentors for Students Graduating 2027",
+        "description": "Minds Matter Mentors for Students Graduating 2027",
+        "do_remove": true
+    },
+    "2028mentors": {
+        "filters": [
+            {
+                "column": "Role (Non-Leadership)",
+                "condition": "contains",
+                "value": "Mentor"
+            },
+            {
+                "column": "Student Year Association",
+                "condition": "equals",
+                "value": "2028"
+            }
+        ],
+        "combination": "and",
+        "name": "Minds Matter Mentors for Students Graduating 2028",
+        "description": "Minds Matter Mentors for Students Graduating 2028",
+        "do_remove": true
+    },
+    "2026mentors": {
+        "filters": [
+            {
+                "column": "Role (Non-Leadership)",
+                "condition": "contains",
+                "value": "Mentor"
+            },
+            {
+                "column": "Student Year Association",
+                "condition": "equals",
+                "value": "2026"
+            }
+        ],
+        "combination": "and",
+        "name": "Minds Matter Mentors for Students Graduating 2026",
+        "description": "Minds Matter Mentors for Students Graduating in 2026",
+        "do_remove": true
     },
     "2025mentors": {
         "filters": [
@@ -322,29 +456,14 @@ var co_groups_config = {
     "active": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Status",
                 "condition": "equals",
-                "value": "Volunteer"
+                "value": "Current"
             },
-            {
-                "column": "Contact Record Type",
-                "condition": "equals",
-                "value": "Board Member"
-            },
-            {
-                "column": "Contact Record Type",
-                "condition": "equals",
-                "value": "Student"
-            },
-            {
-                "column": "Contact Record Type",
-                "condition": "equals",
-                "value": "Employee"
-            }
         ],
         "combination": "or",
-        "name": "Minds Matter Colorado All",
-        "description": "All Minds Matter Colorado active members",
+        "name": "Minds Matter Seattle All",
+        "description": "All Minds Matter Seattle active members",
         "do_remove": true
     },
     "board": {
@@ -362,7 +481,7 @@ var co_groups_config = {
     "lt": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
                 "value": "Employee"
             }
@@ -386,7 +505,7 @@ var co_groups_config = {
     "volunteers": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
                 "value": "Volunteer"
             }
@@ -398,9 +517,9 @@ var co_groups_config = {
     "2021mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -415,9 +534,9 @@ var co_groups_config = {
     "2022mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -432,9 +551,9 @@ var co_groups_config = {
     "2023mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -503,9 +622,9 @@ var co_groups_config = {
     "gw-2021mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -525,9 +644,9 @@ var co_groups_config = {
     "gw-2022mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -547,9 +666,9 @@ var co_groups_config = {
     "gw-2023mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -638,9 +757,9 @@ var co_groups_config = {
     "dmlk-2021mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -660,9 +779,9 @@ var co_groups_config = {
     "dmlk-2022mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -682,9 +801,9 @@ var co_groups_config = {
     "dmlk-2023mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -773,9 +892,9 @@ var co_groups_config = {
     "west-2021mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -795,9 +914,9 @@ var co_groups_config = {
     "west-2022mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -817,9 +936,9 @@ var co_groups_config = {
     "west-2023mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",
@@ -908,9 +1027,9 @@ var co_groups_config = {
     "harrison-2023mentees": {
         "filters": [
             {
-                "column": "Contact Record Type",
+                "column": "Engagement Type",
                 "condition": "equals",
-                "value": "Student"
+                "value": "High School Student"
             },
             {
                 "column": "Year",

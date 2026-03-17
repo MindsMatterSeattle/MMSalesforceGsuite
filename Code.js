@@ -1,5 +1,8 @@
 /**
- * Lists users in a G Suite domain.
+ * Generates a random 6-character string used as a password suffix.
+ * Characters are drawn from alphanumerics plus a set of special characters.
+ *
+ * @returns {string} A random 6-character string.
  */
 function generateRandom() {
   var data = "xxxxxx";
@@ -12,6 +15,18 @@ function generateRandom() {
   return text;
 }
 
+/**
+ * Creates a new Google Workspace user and logs their credentials to the new-user tracking sheet.
+ * The generated password is "MM2019" + firstName + a random suffix; the user is required to
+ * change it on first login.
+ *
+ * @param {string} firstName - User's first name.
+ * @param {string} lastName - User's last name.
+ * @param {string} default_email - Primary (org) email address to create.
+ * @param {string} home_email - Personal/home email address.
+ * @param {string} phone - Home phone number.
+ * @param {boolean} dry_run - If true, skips the actual Admin Directory insert and sheet write.
+ */
 function addUser(firstName, lastName, default_email, home_email, phone, dry_run) {
   var userID = PropertiesService.getScriptProperties().getProperty('newUserSheetID');
   var ss = SpreadsheetApp.openById(userID);
@@ -54,6 +69,13 @@ function addUser(firstName, lastName, default_email, home_email, phone, dry_run)
 
 }
 
+/**
+ * Adds a user to a Google Group if they are not already a member.
+ *
+ * @param {string} userEmail - Email address of the user to add.
+ * @param {string} groupEmail - Email address of the target Google Group.
+ * @param {boolean} dry_run - If true, skips the actual Admin Directory insert.
+ */
 function addGroupMember(userEmail, groupEmail, dry_run) {
 
   group = GroupsApp.getGroupByEmail(groupEmail)
@@ -73,6 +95,12 @@ function addGroupMember(userEmail, groupEmail, dry_run) {
   }
 }
 
+/**
+ * Checks whether a Google Workspace user with the given email exists.
+ *
+ * @param {string} email - The primary email address to look up.
+ * @returns {boolean} True if the user exists, false otherwise.
+ */
 function isUser(email) {
   try {
     var user = AdminDirectory.Users.get(email);
@@ -84,6 +112,16 @@ function isUser(email) {
   }
 }
 
+/**
+ * Audits a Google Group against an expected membership list.
+ * - Optionally removes members who are not in correctEmails (and are not admin).
+ * - Adds any expected members who are missing from the group.
+ *
+ * @param {GoogleAppsScript.Groups.Group} group - The Google Group object to audit.
+ * @param {string[]} correctEmails - Array of email addresses that should be in the group.
+ * @param {boolean} do_remove - If true, removes users not found in correctEmails.
+ * @param {boolean} dry_run - If true, skips actual add/remove API calls.
+ */
 function auditGroup(group, correctEmails, do_remove, dry_run) {
   var domainname = PropertiesService.getScriptProperties().getProperty('domainname');
   var groupEmail = group.getEmail();
@@ -160,6 +198,10 @@ function listAllUsers() {
   return allUsers;
 }
 
+/**
+ * Creates any Google Groups defined in groups_config_dict that do not yet exist in the domain.
+ * Each newly created group has admin@<domain> added as an OWNER with delivery disabled.
+ */
 function setupGroups() {
   var domainname = PropertiesService.getScriptProperties().getProperty('domainname');
   var groups_config = groups_config_dict[domainname];
@@ -194,6 +236,15 @@ function setupGroups() {
 }
 
 
+/**
+ * Checks whether a Google Workspace user appears in a spreadsheet by matching any of their
+ * email addresses against a specified column.
+ *
+ * @param {Object} user - A Google Workspace user object (must have an `emails` array).
+ * @param {Array[]} rows - 2D array of spreadsheet values (first row is headers).
+ * @param {number} emailCol - Column index to search for email matches.
+ * @returns {boolean} True if any of the user's emails is found in the column.
+ */
 function isUserByEmail(user, rows, emailCol) {
   for (var r = 1; r < rows.length; r++) {
     var email = rows[r][emailCol];
@@ -205,6 +256,16 @@ function isUserByEmail(user, rows, emailCol) {
   }
   return false;
 }
+/**
+ * Checks whether a Google Workspace user appears in a spreadsheet by matching their full name
+ * against concatenated first-name and last-name columns.
+ *
+ * @param {Object} user - A Google Workspace user object (must have a `name.fullName` string).
+ * @param {Array[]} rows - 2D array of spreadsheet values (first row is headers).
+ * @param {number} fCol - Column index for first name.
+ * @param {number} lCol - Column index for last name.
+ * @returns {boolean} True if the user's full name is found in the spreadsheet.
+ */
 function isUserbyName(user, rows, fCol, lCol) {
   for (var r = 1; r < rows.length; r++) {
     var fullname = rows[r][fCol] + " " + rows[r][lCol]
@@ -216,8 +277,14 @@ function isUserbyName(user, rows, fCol, lCol) {
   return false;
 }
 
-// function for checking that current gsuite users should exist in the domain
-// useful for automatatically suspending accounts of former org members
+/**
+ * Audits all active Google Workspace accounts against the Salesforce contact spreadsheet.
+ * Any non-suspended, non-protected user not found (by name or email) in the active Salesforce
+ * sheet is written to the "SuspendedUsers" sheet for manual review or automatic suspension.
+ *
+ * Reads script properties: salesforceSpreadSheetID, salesforceSheetName,
+ * userSuspensionSheetID, protectedAccounts.
+ */
 function auditActive() {
   all_users = listAllUsers()
   var salesforceSpreadSheetID = PropertiesService.getScriptProperties().getProperty('salesforceSpreadSheetID');
@@ -259,7 +326,10 @@ function auditActive() {
   }
 }
 
-// function for suspending the accounts in the suspendedUsers spreadsheet
+/**
+ * Suspends all Google Workspace accounts listed in the "SuspendedUsers" sheet.
+ * Reads script property: userSuspensionSheetID.
+ */
 function suspendUsers() {
   var userSuspensionSheetID = PropertiesService.getScriptProperties().getProperty('userSuspensionSheetID');
   var suspendedSpreadSheet = SpreadsheetApp.openById(userSuspensionSheetID);
@@ -278,78 +348,113 @@ function suspendUsers() {
   }
 }
 
+/**
+ * Main sync function: reconciles Google Workspace users and group memberships with the
+ * Salesforce contact spreadsheet.
+ *
+ * Steps:
+ *  1. Loads all Google Groups defined in groups_config_dict for the domain.
+ *  2. Reads every contact row from the Salesforce spreadsheet.
+ *  3. For each contact, derives the expected org email (firstname.lastname@domain).
+ *  4. Creates a new Google Workspace account if the user doesn't already exist
+ *     (skipped for contacts with Status == "Completed").
+ *  5. Evaluates each group's filter rules (supports 'contains'/'equals' conditions
+ *     combined with 'and'/'or' logic) to build the expected membership list.
+ *  6. Calls auditGroup() for each group to add/remove members as needed.
+ *
+ * Reads script properties: domainname, salesforceSpreadSheetID, salesforceSheetName.
+ * Controlled by the groups_config_dict configuration in groups_conf.js.
+ */
 function syncGoogleWithSalesforce_v2() {
-  var dry_run = false;
-  var do_remove_default = true;
+  var dry_run = false;         // set to true to log what would happen without making any changes
+  var do_remove_default = true; // remove unlisted members from groups unless a group overrides this
   var domainname = PropertiesService.getScriptProperties().getProperty('domainname');
-  var groups_config = groups_config_dict[domainname];
-  //console.log(groups_config);
-  groupDict = {}
-  correctEmailDict = {}
-  for (var group in groups_config) {
-    google_group = GroupsApp.getGroupByEmail(group + "@" + domainname);
-    groupDict[group] = google_group
-    correctEmailDict[group] = []
-    Utilities.sleep(1000)
+  var groups_config = groups_config_dict[domainname]; // group rules for this chapter's domain
+
+  // Phase 1: Pre-load Google Group objects and initialize the expected-membership lists.
+  // We fetch each Group object up front so we only make one GroupsApp API call per group,
+  // rather than one per contact row below.
+  groupDict = {}        // { group_str: Google Group object }
+  correctEmailDict = {} // { group_str: [emails that should be in this group] }
+  for (var group_str in groups_config) {
+    google_group_obj = GroupsApp.getGroupByEmail(group_str + "@" + domainname);
+    groupDict[group_str] = google_group_obj
+    correctEmailDict[group_str] = []
+    Utilities.sleep(1000) // avoid hitting the Groups API rate limit
   }
 
+  // Phase 2: Load the Salesforce spreadsheet and build a column-name-to-index map so we
+  // can look up any column by name instead of by hard-coded index numbers.
   var salesforceSpreadSheetID = PropertiesService.getScriptProperties().getProperty('salesforceSpreadSheetID');
   var ss = SpreadsheetApp.openById(salesforceSpreadSheetID);
 
   var salesforceSheetName = PropertiesService.getScriptProperties().getProperty('salesforceSheetName');
   var sheet = ss.getSheetByName(salesforceSheetName);
+
   var rangeData = sheet.getDataRange();
   var lastColumn = rangeData.getLastColumn();
   var lastRow = rangeData.getLastRow();
   var searchRange = sheet.getRange(1, 1, 1, lastColumn - 1);
   var rangeValues = searchRange.getValues();
 
-  var columnDict = {}
-
+  var columnDict = {} // { column_name_str: column_index_int }
   for (i = 0; i < lastColumn; i++) {
     columnDict[rangeValues[0][i]] = i;
   }
 
   data = rangeData.getValues();
 
+  // Phase 3: Process each contact row (skip row 0, which is headers).
   for (i = 1; i < lastRow; i++) {
     phone = data[i][columnDict["Phone"]];
+
+    // Derive the expected org email from First/Last Name: "first.last@domain".
+    // Spaces are replaced with "." and apostrophes (e.g. O'Brien) are stripped.
     var email = data[i][columnDict["First Name"]].toLowerCase() + "." + data[i][columnDict["Last Name"]].toLowerCase() + "@" + domainname;
-    email = email.replace(" ", ".");
-    email = email.replace(" ", ".");
+    email = email.replace(/ /g, ".")
+                  .replace(/['\u2018\u2019]/g, ""); // strip straight and curly apostrophes
+
     var is_user = isUser(email);
 
-    // make a user if we they are not in the system
+    // Create a Google Workspace account if one doesn't exist yet.
+    // Skip contacts whose Status is "Completed" -- these are alumni who have graduated
+    // out of the program and should not get new accounts.
     if (!is_user) {
-      // avoid making emails for older alumni in system
-      if (data[i][columnDict["Contact Record Type"]] != 'Alumni') {
+      if (columnDict["Status"] != "Completed") {
         addUser(data[i][columnDict['First Name']],
-          data[i][columnDict['Last Name']],
-          email,
-          data[i][columnDict['Email']],
-          data[i][columnDict['Phone']],
-          dry_run);
+                data[i][columnDict['Last Name']],
+                email,
+                data[i][columnDict['Email']],
+                data[i][columnDict['Phone']],
+                false);
         is_user = true;
       }
     }
-    for (var group in groups_config) {
-      gc = groups_config[group]
+
+    // Phase 3b: Determine which groups this contact belongs to.
+    // For each group, evaluate its filter list against this row and add the email to
+    // correctEmailDict if the contact qualifies.
+    for (var group_str in groups_config) {
+      gc = groups_config[group_str]
+
       if (gc['combination'] == "or") {
+        // OR logic: add the email as soon as any single filter matches.
         for (var k = 0; k < gc['filters'].length; k++) {
           var filt = gc['filters'][k]
           if (filt['condition'] == 'contains') {
             if (data[i][columnDict[filt['column']]].toString().indexOf(filt['value']) != -1) {
-              correctEmailDict[group].push(email);
+              correctEmailDict[group_str].push(email);
             }
           }
           if (filt['condition'] == 'equals') {
             if (data[i][columnDict[filt['column']]] == filt['value']) {
-              correctEmailDict[group].push(email);
+              correctEmailDict[group_str].push(email);
             }
           }
         }
       }
       else {
+        // AND logic (default when 'combination' is absent): every filter must match.
         var isgood = true;
         for (var k = 0; k < gc['filters'].length; k++) {
           var filt = gc['filters'][k];
@@ -365,19 +470,22 @@ function syncGoogleWithSalesforce_v2() {
           }
         }
         if (isgood) {
-          correctEmailDict[group].push(email);
+          correctEmailDict[group_str].push(email);
         }
       }
     }
   }
+
+  // Phase 4: Reconcile actual group memberships against the expected lists we just built.
+  // auditGroup() will add missing members and (if do_remove is true) remove extra ones.
   console.log(correctEmailDict);
-  for (var group in groups_config) {
-    google_group = groupDict[group];
-    var do_remove = groups_config[group]['do_remove']
+  for (var group_str in groups_config) {
+    google_group = groupDict[group_str];
+    var do_remove = groups_config[group_str]['do_remove']
     if (do_remove == null) {
       do_remove = do_remove_default;
     }
-    auditGroup(google_group, correctEmailDict[group], do_remove, dry_run);
-    Utilities.sleep(1000)
+    auditGroup(google_group, correctEmailDict[group_str], do_remove, dry_run);
+    Utilities.sleep(1000) // avoid hitting the Admin Directory API rate limit
   }
 }
