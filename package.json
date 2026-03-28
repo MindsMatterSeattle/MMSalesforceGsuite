@@ -1,0 +1,19 @@
+{
+  "name": "mmsalesforcegsuite",
+  "version": "1.0.0",
+  "description": "DRAFT: Last edited September 23, 2019",
+  "main": "Code.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejwalk/MMSalesforceGsuite.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ejwalk/MMSalesforceGsuite/issues"
+  },
+  "homepage": "https://github.com/ejwalk/MMSalesforceGsuite#readme"
+}
